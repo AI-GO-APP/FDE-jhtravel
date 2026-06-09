@@ -1,0 +1,17 @@
+# 執行時產生的 SQLite 資料庫(每次啟動由 freshDb() 重建)
+tour.db
+tour.db-journal
+tour.db-wal
+tour.db-shm
+
+# 日誌
+*.log
+
+# 相依套件(本專案零依賴,保險起見仍排除)
+node_modules/
+
+# 作業系統 / 編輯器
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
