@@ -1,0 +1,8 @@
+# Staging 部署設定
+# 規則:入口 service 的對外 port 必須用 ${PORT:-3001},由 staging 系統自動分配
+services:
+  web:
+    build: .
+    ports:
+      - "${PORT:-3001}:3000"   # host(系統分配) : container(server.js 監聽 3000)
+    restart: unless-stopped

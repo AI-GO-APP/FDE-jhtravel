@@ -1,0 +1,16 @@
+name: 部署到 Staging
+
+on:
+  workflow_dispatch:        # 可在 GitHub Actions 頁面手動觸發
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+
+jobs:
+  deploy:
+    uses: AI-GO-APP/.github/.github/workflows/staging-deploy.yml@main
+    with:
+      project-name: jhtour    # 網址 → https://jhtour.staging.ai-go.app
+    secrets: inherit
