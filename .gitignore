@@ -15,3 +15,8 @@ node_modules/
 Thumbs.db
 .vscode/
 .idea/
+
+# 個人筆記 / 草稿(只對自己有意義,別人 clone 不需要 → 不進版控)
+# 整個 notes/ 資料夾;以及任何 *.local.md 單檔草稿(例:想法.local.md)
+notes/
+*.local.md
