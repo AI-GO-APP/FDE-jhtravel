@@ -23,6 +23,8 @@
   .badge{display:inline-block;background:#fef3c7;color:#92400e;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:700}
   .chk{display:flex;gap:8px;align-items:flex-start;margin-top:14px;font-size:14px}
   .chk input{width:auto;margin-top:3px}
+  .pad{border:1px dashed #9ca3af;border-radius:10px;background:#fff;touch-action:none;width:100%;height:170px;display:block}
+  .padbar{display:flex;justify-content:space-between;align-items:center;margin-top:6px}
 </style>
 </head>
 <body>
@@ -63,27 +65,53 @@ async function load(){
     <div class="card" id="signCard"></div>`;
 
   if(signed){
-    $('#signCard').innerHTML = `<div class="ok">✓ 本契約已於 ${ (o&&'')||'' } ${esc(d.contract.signed_at||'').replace('T',' ')} 由「${esc(d.contract.signer_name)}」完成簽署</div>`;
+    const sig = d.contract.signature ? `<div style="margin-top:12px"><div class="muted" style="margin-bottom:6px">簽名</div><img src="${d.contract.signature}" style="max-width:320px;border:1px solid #e5e7eb;border-radius:8px;background:#fff"></div>` : '';
+    $('#signCard').innerHTML = `<div class="ok">✓ 本契約已於 ${esc((d.contract.signed_at||'').replace('T',' '))} 由「${esc(d.contract.signer_name)}」完成簽署</div>${sig}`;
     return;
   }
   $('#signCard').innerHTML = `
     <h1 style="font-size:17px">簽署</h1>
-    <div class="muted">請報名人 <b>${esc(o.customer_name)}</b> 確認上方契約內容後簽署。</div>
+    <div class="muted">請報名人 <b>${esc(o.customer_name)}</b> 確認上方契約內容後親筆簽署。</div>
     <label>簽署人姓名</label>
     <input id="signer" value="${esc(o.customer_name)}" placeholder="請輸入簽署人姓名">
+    <label>手寫簽名</label>
+    <canvas id="pad" class="pad"></canvas>
+    <div class="padbar"><span class="muted">請在框內以滑鼠或手指簽名</span>
+      <button onclick="clearPad()" style="border:0;border-radius:8px;background:#6b7280;color:#fff;padding:8px 14px;font-weight:700;cursor:pointer">清除</button></div>
     <div class="chk"><input type="checkbox" id="agree"><label for="agree" style="margin:0;font-weight:400">本人已詳閱並同意上述旅遊定型化契約之全部內容。</label></div>
     <button class="btn" id="signBtn" onclick="doSign()">確認簽署</button>`;
+  initPad();
 }
+
+let pad, pctx, drawing=false, hasDrawn=false;
+function initPad(){
+  pad = document.getElementById('pad'); if(!pad) return;
+  const rect = pad.getBoundingClientRect();
+  pad.width = rect.width; pad.height = rect.height;
+  pctx = pad.getContext('2d');
+  pctx.lineWidth = 2.5; pctx.lineCap = 'round'; pctx.lineJoin = 'round'; pctx.strokeStyle = '#111827';
+  hasDrawn = false;
+  const pos = e => { const r = pad.getBoundingClientRect(); const t = e.touches ? e.touches[0] : e; return { x: t.clientX - r.left, y: t.clientY - r.top }; };
+  const start = e => { drawing = true; const p = pos(e); pctx.beginPath(); pctx.moveTo(p.x, p.y); e.preventDefault(); };
+  const move = e => { if(!drawing) return; const p = pos(e); pctx.lineTo(p.x, p.y); pctx.stroke(); hasDrawn = true; e.preventDefault(); };
+  const end = () => { drawing = false; };
+  pad.addEventListener('mousedown', start); pad.addEventListener('mousemove', move); window.addEventListener('mouseup', end);
+  pad.addEventListener('touchstart', start, {passive:false}); pad.addEventListener('touchmove', move, {passive:false}); pad.addEventListener('touchend', end);
+}
+window.clearPad = () => { if(pctx) pctx.clearRect(0, 0, pad.width, pad.height); hasDrawn = false; };
 
 window.doSign = async () => {
   const name = $('#signer').value.trim();
   if(!name) return alert('請填寫簽署人姓名');
+  if(!hasDrawn) return alert('請完成手寫簽名');
   if(!$('#agree').checked) return alert('請先勾選「已詳閱並同意契約內容」');
   $('#signBtn').disabled = true;
+  const signature = pad.toDataURL('image/png');
   try{
-    const r = await fetch('/api/sign/'+encodeURIComponent(token), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({signer_name:name})});
+    const r = await fetch('/api/sign/'+encodeURIComponent(token), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({signer_name:name, signature})});
     const d = await r.json(); if(!r.ok) throw new Error(d.error||'簽署失敗');
-    $('#signCard').innerHTML = '<div class="ok">✓ 簽署完成,感謝您!此頁可關閉。</div>';
+    const sig = `<div style="margin-top:12px"><div class="muted" style="margin-bottom:6px">簽名</div><img src="${signature}" style="max-width:320px;border:1px solid #e5e7eb;border-radius:8px;background:#fff"></div>`;
+    $('#signCard').innerHTML = '<div class="ok">✓ 簽署完成,感謝您!此頁可關閉。</div>'+sig;
   }catch(e){ $('#signBtn').disabled=false; alert(e.message); }
 };
 load();

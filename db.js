@@ -180,6 +180,7 @@ function createSchema(db) {
     signer_name           TEXT,
     signed_pdf_url        TEXT,
     sign_token            TEXT,    -- 不可猜的簽署連結 token(只有該旅客拿到)
+    signature             TEXT,    -- 手寫簽名(base64 PNG data URL)
     created_at            TEXT
   );
 

@@ -431,13 +431,13 @@ async function handleApi(req, res, url) {
       const tpl = db.prepare('SELECT template_name, pdf_file FROM contract_template WHERE contract_template_id=?').get(mc.contract_template_id);
       return json(res, 200, {
         order, items, template: tpl || null,
-        contract: { contract_no: mc.contract_no, signed_status: mc.signed_status, signer_name: mc.signer_name, signed_at: mc.signed_at },
+        contract: { contract_no: mc.contract_no, signed_status: mc.signed_status, signer_name: mc.signer_name, signed_at: mc.signed_at, signature: mc.signature || null },
       });
     }
     // POST /api/sign/:token  憑 token 送出簽署(只有該旅客的連結能簽)
     if (req.method === 'POST' && seg[1] === 'sign' && seg[2]) {
       const body = await readBody(req);
-      const r = F.signByToken(db, { sign_token: seg[2], signer_name: body.signer_name });
+      const r = F.signByToken(db, { sign_token: seg[2], signer_name: body.signer_name, signature: body.signature });
       return json(res, 200, { ok: true, ...r });
     }
     // POST /api/orders/:id/expire-now  (展示用)立即讓佔位逾期

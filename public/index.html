@@ -376,7 +376,8 @@ window.openOrder = async (id) => {
       </div>
       ${!o.contract?`<button class="btn sm" style="margin-top:12px" onclick="genContract(${o.order_id})">產生簽署連結</button>`
        :(o.contract.signed_status==='已簽'
-         ?`<div class="muted" style="margin-top:10px">已由「${esc(o.contract.signer_name)}」於 ${(o.contract.signed_at||'').replace('T',' ')} 簽署</div>`
+         ?`<div class="muted" style="margin-top:10px">已由「${esc(o.contract.signer_name)}」於 ${(o.contract.signed_at||'').replace('T',' ')} 簽署</div>
+           ${o.contract.signature?`<img src="${o.contract.signature}" style="max-width:220px;border:1px solid var(--line);border-radius:8px;background:#fff;margin-top:8px">`:''}`
          :`<div style="margin-top:12px"><div class="muted" style="margin-bottom:6px">把以下連結傳給報名旅客線上簽署(僅此連結可簽):</div>
             <input id="signLink" readonly value="${esc(signLink)}" style="font-size:12px">
             <div style="margin-top:8px"><button class="btn sm" onclick="copyLink()">複製連結</button>

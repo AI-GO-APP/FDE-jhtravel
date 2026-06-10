@@ -153,8 +153,11 @@ async function run() {
   check('憑 token 取得簽署資料、對應國內範本', info.status === 200 && /國內/.test(info.body.template.template_name), JSON.stringify(info.body.template));
   const bad = await req('GET', '/api/sign/zzz' + token);
   check('錯誤 token → 查無(404,非公開)', bad.status === 404, bad.status);
-  const sg = await req('POST', '/api/sign/' + token, { signer_name: '簽約客' });
-  check('憑 token 簽署成功', sg.status === 200 && !!sg.body.contract_no, JSON.stringify(sg.body));
+  const noSig = await req('POST', '/api/sign/' + token, { signer_name: '簽約客' });
+  check('未手寫簽名 → 被擋', noSig.status === 400 && /簽名/.test(noSig.body.error || ''), JSON.stringify(noSig.body));
+  const fakeSig = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const sg = await req('POST', '/api/sign/' + token, { signer_name: '簽約客', signature: fakeSig });
+  check('憑 token + 手寫簽名簽署成功', sg.status === 200 && !!sg.body.contract_no, JSON.stringify(sg.body));
   const info2 = await req('GET', '/api/sign/' + token);
   check('簽署後狀態 → 已簽', info2.body.contract.signed_status === '已簽', info2.body.contract.signed_status);
 
