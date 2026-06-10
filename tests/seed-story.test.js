@@ -61,7 +61,7 @@ async function run() {
   const ci = o.items.find(i => i.pt_name === '小孩佔床');
   check('步驟6 明細 大人2 + 小孩1,總額88000', ai.qty === 2 && ci.qty === 1 && o.total === 88000, `大${ai.qty}小${ci.qty} 總${o.total}`);
   check('步驟7 旅客 3人、含身分證', o.travelers.length === 3 && o.travelers.map(t => t.name).includes('王太太') && o.travelers.every(t => t.id_no), o.travelers.map(t => t.name).join('、'));
-  check('步驟8 庫存已扣(車位3、床位3)', car.used_qty === 3 && bed.used_qty === 3, `車${car.used_qty} 床${bed.used_qty}`);
+  check('步驟8 庫存已扣(王小明至少佔車位3、床位3)', car.used_qty >= 3 && bed.used_qty >= 3, `車${car.used_qty} 床${bed.used_qty}`);
   check('步驟9 契約 C-HUA3D260701A 已簽', o.contract && o.contract.signed_status === '已簽' && o.contract.contract_no === 'C-HUA3D260701A', o.contract && o.contract.contract_no);
   const dep = o.payments.find(p => p.payment_type === '訂金');
   const fin = o.payments.find(p => p.payment_type === '尾款');

@@ -275,10 +275,10 @@ function seed(db) {
   const iv = db.prepare(
     'INSERT INTO tour_inventory (tour_id,resource_type_id,total_qty,used_qty) VALUES (?,?,?,?)'
   );
-  // 花蓮三日:車位42、床位40;used 已對應王小明訂單(2大1小 → 車位3、床位3)
-  iv.run(1, 1, 42, 3); iv.run(1, 2, 40, 3);
-  // 北海道:車位30、床位30、機位30(尚無訂單)
-  iv.run(2, 1, 30, 0); iv.run(2, 2, 30, 0); iv.run(2, 3, 30, 0);
+  // 花蓮三日:車位42、床位40;used 對應範例訂單(王小明3 + 林2 + 陳3 = 車8床8)
+  iv.run(1, 1, 42, 8); iv.run(1, 2, 40, 8);
+  // 北海道:車位30、床位30、機位30;used 對應永盛旅行社 8 大人
+  iv.run(2, 1, 30, 8); iv.run(2, 2, 30, 8); iv.run(2, 3, 30, 8);
 
   // 步驟4. 售價(tour_price)— 大人30,000、小孩28,000
   const tp = db.prepare(
@@ -323,7 +323,37 @@ function seed(db) {
     'INSERT INTO payment (order_id,payment_type,amount,method,paid_at,note,created_at) VALUES (?,?,?,?,?,?,?)'
   );
   pay.run(1, '訂金', 20000, '信用卡', '2026-06-05T10:35:00', '', '2026-06-05T10:35:00');
-  pay.run(1, '尾款', 68000, '匯款',   '2026-06-20T14:00:00', '', '2026-06-20T14:00:00');
+  pay.run(1, '尾款', 68000, '匯款',   '2026-06-20T14:00:00', '12345', '2026-06-20T14:00:00');
+
+  // ── 其他範例訂單(呈現不同狀態:剛報名 / 已付訂金 / 同業團)──
+  const future = new Date(); future.setDate(future.getDate() + 30);
+  const holdFuture = future.toISOString().slice(0, 19); // 待付訂金佔位到期設遠期,demo 期間不被自動釋放
+
+  const cust = db.prepare('INSERT INTO customer (customer_id,name,phone,email,line_id,note,created_at) VALUES (?,?,?,?,?,?,?)');
+  cust.run(2, '林小姐', '0922111222', 'lin@example.com', '', '', now);
+  cust.run(3, '陳先生', '0933222333', 'chen@example.com', '', '', now);
+  cust.run(4, '永盛旅行社', '02-27001234', 'sales@yongsheng.com', 'yongsheng', '同業合作', now);
+
+  const ord = db.prepare('INSERT INTO "order" (order_id,order_no,order_type,tour_id,customer_id,channel,status,hold_expire_at,cancel_reason,refund_amount,created_at,cancelled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
+  const oi = db.prepare('INSERT INTO order_item (order_id,passenger_type_id,qty,agreed_unit_price,agreed_subtotal,discount_amount,final_amount) VALUES (?,?,?,?,?,?,?)');
+  const py = db.prepare('INSERT INTO payment (order_id,payment_type,amount,method,paid_at,note,created_at) VALUES (?,?,?,?,?,?,?)');
+
+  // 林小姐:剛報名、待付訂金(花蓮三日,2 大人,尚未付款)
+  ord.run(2, 'O20260607002', '一般', 1, 2, '官網', '待付訂金', holdFuture, null, 0, '2026-06-07T09:30:00', null);
+  oi.run(2, 1, 2, 30000, 60000, 0, 60000);
+
+  // 陳先生:已付訂金、已確認(花蓮三日,2 大 1 小;訂金 26,400;契約已產生但未簽)
+  ord.run(3, 'O20260606003', '一般', 1, 3, '櫃台', '已確認', null, null, 0, '2026-06-06T15:00:00', null);
+  oi.run(3, 1, 2, 30000, 60000, 0, 60000);
+  oi.run(3, 2, 1, 28000, 28000, 0, 28000);
+  py.run(3, '訂金', 26400, '信用卡', '2026-06-06T15:10:00', '', '2026-06-06T15:10:00');
+  db.prepare('INSERT INTO member_contract (member_contract_id,order_id,contract_template_id,contract_version,contract_no,signed_status,signed_at,signer_name,signed_pdf_url,sign_token,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+    .run(2, 3, 1, 'V1', 'C20260606003', '未簽', null, '', '/contracts/domestic-v1.pdf', 'seedchen0002', now);
+
+  // 永盛旅行社:已付訂金、已確認(北海道,8 大人,同業團;訂金 100,800)
+  ord.run(4, 'O20260605004', '同業', 2, 4, '同業', '已確認', null, null, 0, '2026-06-05T11:00:00', null);
+  oi.run(4, 1, 8, 42000, 336000, 0, 336000);
+  py.run(4, '訂金', 100800, '轉帳', '2026-06-05T11:20:00', '', '2026-06-05T11:20:00');
 }
 
 module.exports = { openDb, freshDb, DB_PATH };
