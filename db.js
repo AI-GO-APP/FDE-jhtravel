@@ -59,6 +59,13 @@ function createSchema(db) {
     PRIMARY KEY (passenger_type_id, resource_type_id)
   );
 
+  CREATE TABLE cost_category (
+    cost_category_id  INTEGER PRIMARY KEY,
+    name              TEXT,     -- 住宿 / 交通 / 餐食 / 服務費
+    is_pass_through   INTEGER,  -- 是否代收轉付
+    status            TEXT
+  );
+
   CREATE TABLE customer (
     customer_id  INTEGER PRIMARY KEY,
     name         TEXT,
@@ -211,6 +218,15 @@ function seed(db) {
   cr.run(3, 1, 1); cr.run(3, 2, 0); cr.run(3, 3, 1);
   // 嬰兒:車位0 床位0 機位0(膝上,不佔資源)
   cr.run(4, 1, 0); cr.run(4, 2, 0); cr.run(4, 3, 0);
+
+  // --- 成本科目 ---
+  const cc = db.prepare(
+    'INSERT INTO cost_category (cost_category_id,name,is_pass_through,status) VALUES (?,?,?,?)'
+  );
+  cc.run(1, '住宿', 1, '啟用');
+  cc.run(2, '交通', 1, '啟用');
+  cc.run(3, '餐食', 1, '啟用');
+  cc.run(4, '服務費', 0, '啟用');
 
   // ============================================================
   // 種子資料:照「資料庫總覽」的故事 — 王小明報名花蓮三日遊(步驟 1~10)
