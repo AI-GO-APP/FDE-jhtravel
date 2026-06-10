@@ -1,16 +1,17 @@
-// smoke-test.js — 核心流程煙霧測試(流程 A/B/C/D)
+// tests/flows.test.js — 後台操作 + 核心流程 A/B/C/D(自建資料)
 //
-// 執行:node smoke-test.js
+// 執行:node tests/flows.test.js
 //   自動啟動 server.js(子行程,乾淨 DB)→ 跑斷言 → 關閉伺服器。
 //   全過 exit 0;任一失敗 exit 1。
 //
-// 設計:測試自己先用後台 API「開一個小庫存的測試團」,再對它跑流程,
-//       不依賴種子資料的特定團號/庫存 → 種子改了也不會壞。
-//   流程A 報名扣庫存(含防超賣鎖)
-//   流程B 佔位 / 付訂金確認 / 逾期自動釋放
-//   流程C 取消 / 退訂(庫存歸還)
-//   流程D 成團 / 不成團判定
+// 涵蓋:
+//   ・後台寫入操作:建商品 → 開團(設庫存/售價)→ 建訂單(扣庫存)→ 新增旅客 → 收款
+//   ・流程A 報名扣庫存(含防超賣鎖)
+//   ・流程B 佔位 / 付訂金確認 / 逾期自動釋放
+//   ・流程C 取消 / 退訂(庫存歸還)
+//   ・流程D 成團 / 不成團判定
 //
+// 測試自己用 API 開測試團,不依賴種子資料 → 種子改了也不會壞。
 // 一律以 Node http client 送純 UTF-8,避免 shell/curl 對中文重新編碼。
 
 const http = require('node:http');
@@ -45,9 +46,10 @@ function waitReady(retries = 40) {
     tick();
   });
 }
-const car = (tourDetail) => tourDetail.inventory.find(i => i.name === '車位');
+const car = (td) => td.inventory.find(i => i.name === '車位');
 
-async function openTestTour({ tour_code, min_pax, deadline, total = 8 }) {
+// 後台:建商品 + 開團(回傳 product_id / tour_id),順帶驗證這兩個寫入操作
+async function openTour({ tour_code, min_pax, deadline, total = 8, assert = false }) {
   const prod = await req('POST', '/api/products', { product_code: 'TEST', name: '煙霧測試商品', region_type: '國內', days: 2 });
   const tour = await req('POST', '/api/tours', {
     product_id: prod.body.product_id, tour_code, start_date: '2026-12-01', end_date: '2026-12-02',
@@ -55,16 +57,20 @@ async function openTestTour({ tour_code, min_pax, deadline, total = 8 }) {
     inventory: [{ resource_type_id: 1, total_qty: total }, { resource_type_id: 2, total_qty: total }],
     prices: [{ passenger_type_id: 1, price: 4500, deposit_ratio: 0.3 }],
   });
+  if (assert) {
+    check('後台建立商品成功', prod.status === 200 && prod.body.product_id > 0, JSON.stringify(prod.body));
+    check('後台開團(含庫存+售價)成功', tour.status === 200 && tour.body.tour_id > 0, JSON.stringify(tour.body));
+  }
   return tour.body.tour_id;
 }
 
 async function run() {
   // ── 流程 A:報名扣庫存 + 防超賣(車位8 的測試團)──
-  console.log('\n[流程 A] 報名扣庫存 + 防超賣鎖');
-  const tA = await openTestTour({ tour_code: 'SMOKE-A', min_pax: 6, deadline: '2026-11-01', total: 8 });
+  console.log('\n[後台操作 + 流程 A] 開團 / 報名扣庫存 / 防超賣鎖');
+  const tA = await openTour({ tour_code: 'FLOW-A', min_pax: 6, deadline: '2026-11-01', total: 8, assert: true });
 
   const r1 = await req('POST', '/api/orders', { tour_id: tA, channel: '櫃台', customer: { name: '甲', phone: '0900000001' }, items: [{ passenger_type_id: 1, qty: 5 }] });
-  check('5大人 報名成功', r1.status === 200 && r1.body.ok, JSON.stringify(r1.body));
+  check('建立訂單成功(5大人,扣庫存)', r1.status === 200 && r1.body.ok, JSON.stringify(r1.body));
   const orderA1 = r1.body.order_id;
 
   const r2 = await req('POST', '/api/orders', { tour_id: tA, customer: { name: '乙', phone: '0900000002' }, items: [{ passenger_type_id: 1, qty: 4 }] });
@@ -77,11 +83,16 @@ async function run() {
   check('補報3大人成功(車位滿)', r3.status === 200 && r3.body.ok);
   const orderA2 = r3.body.order_id;
 
+  // 新增旅客(後台寫入操作)
+  const tv = await req('POST', `/api/orders/${orderA1}/travelers`, { passenger_type_id: 1, name: '測試旅客', id_no: 'A123456789', gender: '男' });
+  const od1 = (await req('GET', `/api/orders/${orderA1}`)).body;
+  check('新增旅客成功並掛在訂單', tv.status === 200 && od1.travelers.length === 1, JSON.stringify(tv.body));
+
   // ── 流程 B:付訂金→已確認;逾期釋放 ──
-  console.log('\n[流程 B] 佔位 / 付訂金確認 / 逾期自動釋放');
+  console.log('\n[流程 B] 收款確認 / 逾期自動釋放');
   await req('POST', `/api/orders/${orderA1}/pay`, { payment_type: '訂金', amount: 6750 });
   const o1 = (await req('GET', `/api/orders/${orderA1}`)).body;
-  check('付訂金後狀態→已確認、清除佔位', o1.status === '已確認' && !o1.hold_expire_at, o1.status);
+  check('收訂金後狀態→已確認、清除佔位', o1.status === '已確認' && !o1.hold_expire_at, o1.status);
 
   await req('POST', `/api/orders/${orderA2}/expire-now`, {});
   const rel = await req('POST', '/api/jobs/release-expired', {});
@@ -111,7 +122,7 @@ async function run() {
   check('重複取消後庫存不變', car((await req('GET', `/api/tours/${tA}`)).body).remain === carAfter);
 
   // 不成團:開一個截止日已過、0 人的團 → 判定不成團取消
-  const tB = await openTestTour({ tour_code: 'SMOKE-B', min_pax: 8, deadline: '2020-01-01', total: 16 });
+  const tB = await openTour({ tour_code: 'FLOW-B', min_pax: 8, deadline: '2020-01-01', total: 16 });
   await req('POST', '/api/jobs/check-deadlines', {});
   const tdB = (await req('GET', `/api/tours/${tB}`)).body;
   check('截止日未達門檻 → 不成團取消', tdB.tour.status === '不成團取消', tdB.tour.status);
@@ -119,13 +130,10 @@ async function run() {
 
 (async () => {
   console.log('啟動 server.js(子行程)…');
-  const srv = spawn(process.execPath, [path.join(__dirname, 'server.js')], { stdio: 'ignore' });
-  try {
-    await waitReady();
-    await run();
-  } catch (e) {
-    fail++; console.error('\n測試執行錯誤:', e.message);
-  } finally {
+  const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], { stdio: 'ignore' });
+  try { await waitReady(); await run(); }
+  catch (e) { fail++; console.error('\n測試執行錯誤:', e.message); }
+  finally {
     srv.kill();
     console.log(`\n──────── 結果:${pass} 通過 / ${fail} 失敗 ────────`);
     process.exit(fail ? 1 : 0);
