@@ -363,16 +363,20 @@ function contractByToken(db, token) {
 }
 
 // 客戶憑 token 線上簽署 — 只有拿到該連結的旅客能簽
-function signByToken(db, { sign_token, signer_name, signature }) {
+// 簽署人固定為「報名人(訂單聯絡人)」,不採用前端傳入值,避免竄改
+function signByToken(db, { sign_token, signature }) {
   return tx(db, () => {
     const mc = db.prepare('SELECT * FROM member_contract WHERE sign_token=?').get(sign_token);
     if (!mc) throw new BusinessError('簽署連結無效或已失效');
-    if (!signer_name) throw new BusinessError('請填寫簽署人姓名');
     if (!signature) throw new BusinessError('請完成手寫簽名');
     if (mc.signed_status === '已簽') return { contract_no: mc.contract_no, already: true };
+    const cust = db.prepare(
+      'SELECT c.name FROM "order" o JOIN customer c ON c.customer_id=o.customer_id WHERE o.order_id=?'
+    ).get(mc.order_id);
+    const signer = cust ? cust.name : '';
     db.prepare('UPDATE member_contract SET signed_status=?, signed_at=?, signer_name=?, signature=? WHERE member_contract_id=?')
-      .run('已簽', NOW(), signer_name, signature, mc.member_contract_id);
-    return { contract_no: mc.contract_no };
+      .run('已簽', NOW(), signer, signature, mc.member_contract_id);
+    return { contract_no: mc.contract_no, signer_name: signer };
   });
 }
 

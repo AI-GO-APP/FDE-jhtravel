@@ -437,7 +437,7 @@ async function handleApi(req, res, url) {
     // POST /api/sign/:token  憑 token 送出簽署(只有該旅客的連結能簽)
     if (req.method === 'POST' && seg[1] === 'sign' && seg[2]) {
       const body = await readBody(req);
-      const r = F.signByToken(db, { sign_token: seg[2], signer_name: body.signer_name, signature: body.signature });
+      const r = F.signByToken(db, { sign_token: seg[2], signature: body.signature });
       return json(res, 200, { ok: true, ...r });
     }
     // POST /api/orders/:id/expire-now  (展示用)立即讓佔位逾期

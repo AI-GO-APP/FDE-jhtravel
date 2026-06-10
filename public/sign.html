@@ -72,16 +72,18 @@ async function load(){
   $('#signCard').innerHTML = `
     <h1 style="font-size:17px">簽署</h1>
     <div class="muted">請報名人 <b>${esc(o.customer_name)}</b> 確認上方契約內容後親筆簽署。</div>
-    <label>簽署人姓名</label>
-    <input id="signer" value="${esc(o.customer_name)}" placeholder="請輸入簽署人姓名">
+    <label>簽署人姓名(報名人,不可修改)</label>
+    <input id="signer" value="${esc(o.customer_name)}" readonly style="background:#f3f4f6;color:#374151;cursor:not-allowed">
     <label>手寫簽名</label>
     <canvas id="pad" class="pad"></canvas>
     <div class="padbar"><span class="muted">請在框內以滑鼠或手指簽名</span>
       <button onclick="clearPad()" style="border:0;border-radius:8px;background:#6b7280;color:#fff;padding:8px 14px;font-weight:700;cursor:pointer">清除</button></div>
-    <div class="chk"><input type="checkbox" id="agree"><label for="agree" style="margin:0;font-weight:400">本人已詳閱並同意上述旅遊定型化契約之全部內容。</label></div>
-    <button class="btn" id="signBtn" onclick="doSign()">確認簽署</button>`;
+    <div class="chk"><input type="checkbox" id="agree" onchange="updateSignBtn()"><label for="agree" style="margin:0;font-weight:400">本人已詳閱並同意上述旅遊定型化契約之全部內容。</label></div>
+    <button class="btn" id="signBtn" onclick="doSign()" disabled>確認簽署</button>
+    <div class="muted" style="margin-top:6px">完成「手寫簽名」並勾選同意後,即可點選確認簽署。</div>`;
   initPad();
 }
+function updateSignBtn(){ const b = document.getElementById('signBtn'); const a = document.getElementById('agree'); if(b) b.disabled = !(hasDrawn && a && a.checked); }
 
 let pad, pctx, drawing=false, hasDrawn=false;
 function initPad(){
@@ -93,22 +95,19 @@ function initPad(){
   hasDrawn = false;
   const pos = e => { const r = pad.getBoundingClientRect(); const t = e.touches ? e.touches[0] : e; return { x: t.clientX - r.left, y: t.clientY - r.top }; };
   const start = e => { drawing = true; const p = pos(e); pctx.beginPath(); pctx.moveTo(p.x, p.y); e.preventDefault(); };
-  const move = e => { if(!drawing) return; const p = pos(e); pctx.lineTo(p.x, p.y); pctx.stroke(); hasDrawn = true; e.preventDefault(); };
+  const move = e => { if(!drawing) return; const p = pos(e); pctx.lineTo(p.x, p.y); pctx.stroke(); hasDrawn = true; updateSignBtn(); e.preventDefault(); };
   const end = () => { drawing = false; };
   pad.addEventListener('mousedown', start); pad.addEventListener('mousemove', move); window.addEventListener('mouseup', end);
   pad.addEventListener('touchstart', start, {passive:false}); pad.addEventListener('touchmove', move, {passive:false}); pad.addEventListener('touchend', end);
 }
-window.clearPad = () => { if(pctx) pctx.clearRect(0, 0, pad.width, pad.height); hasDrawn = false; };
+window.clearPad = () => { if(pctx) pctx.clearRect(0, 0, pad.width, pad.height); hasDrawn = false; updateSignBtn(); };
 
 window.doSign = async () => {
-  const name = $('#signer').value.trim();
-  if(!name) return alert('請填寫簽署人姓名');
-  if(!hasDrawn) return alert('請完成手寫簽名');
-  if(!$('#agree').checked) return alert('請先勾選「已詳閱並同意契約內容」');
+  if(!hasDrawn || !$('#agree').checked) return;  // 按鈕本就停用,雙重保險
   $('#signBtn').disabled = true;
   const signature = pad.toDataURL('image/png');
   try{
-    const r = await fetch('/api/sign/'+encodeURIComponent(token), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({signer_name:name, signature})});
+    const r = await fetch('/api/sign/'+encodeURIComponent(token), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({signature})});
     const d = await r.json(); if(!r.ok) throw new Error(d.error||'簽署失敗');
     const sig = `<div style="margin-top:12px"><div class="muted" style="margin-bottom:6px">簽名</div><img src="${signature}" style="max-width:320px;border:1px solid #e5e7eb;border-radius:8px;background:#fff"></div>`;
     $('#signCard').innerHTML = '<div class="ok">✓ 簽署完成,感謝您!此頁可關閉。</div>'+sig;
