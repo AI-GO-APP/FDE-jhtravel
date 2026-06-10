@@ -75,7 +75,7 @@ textarea{min-height:80px}
 <div class="app">
   <aside class="sidebar">
     <div class="logo">旅遊團控系統</div>
-    <div class="sublogo">後台 · MVP｜第一階段地基</div>
+    <div class="sublogo">後台｜第一階段地基</div>
     <div class="nav" id="nav">
       <button data-page="tours" class="active">團期列表</button>
       <button data-page="products">商品管理</button>
@@ -198,9 +198,24 @@ async function renderProducts(){
     <div class="card"><table>
       <tr><th>代碼</th><th>行程名稱</th><th>區域</th><th>天數</th><th>狀態</th><th>已開團數</th></tr>
       ${products.map(p=>`<tr><td>${esc(p.product_code)}</td><td>${esc(p.name)}</td><td>${esc(p.region_type)}</td>
-        <td>${p.days}天</td><td><span class="badge b-green">${esc(p.status)}</span></td><td>${p.tour_count} 團</td></tr>`).join('')}
+        <td>${p.days}天</td><td><span class="badge b-green">${esc(p.status)}</span></td>
+        <td>${p.tour_count>0?`<span class="link" onclick="viewProduct(${p.product_id})">${p.tour_count} 團 →</span>`:'0 團'}</td></tr>`).join('')}
     </table></div>`;
 }
+window.viewProduct = async (id) => {
+  setTitle('商品的團期');
+  const d = await api(`/api/products/${id}/tours`);
+  C().innerHTML = `
+    <span class="crumb" onclick="go('products')">← 返回商品管理</span>
+    <div class="section-title"><h2>${esc(d.product.name)}（${esc(d.product.product_code)}）的團期</h2></div>
+    <div class="card"><table>
+      <tr><th>團號</th><th>出發日</th><th>回程日</th><th>截止日</th><th>門檻</th><th>已成團</th><th>可售</th><th>狀態</th><th>操作</th></tr>
+      ${d.tours.map(t=>`<tr><td>${esc(t.tour_code)}</td><td>${t.start_date}</td><td>${t.end_date}</td><td>${t.signup_deadline}</td>
+        <td>${t.min_pax}</td><td>${t.confirmed_pax}</td><td><b>${t.available}</b></td><td>${tourBadge(t.status)}</td>
+        <td><span class="link" onclick="openTour(${t.tour_id})">控團</span></td></tr>`).join('')
+       || '<tr><td colspan=9 class="muted">此商品尚未開團</td></tr>'}
+    </table></div>`;
+};
 window.toggleProductForm = () => $('#prodForm').classList.toggle('hide');
 window.submitProduct = async () => {
   const name=$('#p-name').value.trim();
@@ -319,6 +334,9 @@ window.openOrder = async (id) => {
   const o = await api('/api/orders/'+id);
   const ptOpts = META.passenger_types.map(p=>`<option value="${p.passenger_type_id}">${esc(p.name)}</option>`).join('');
   const ptName = pid => { const p=META.passenger_types.find(x=>x.passenger_type_id===pid); return p?p.name:''; };
+  const headcount = o.items.reduce((a,i)=>a+i.qty,0);
+  const cancelled = (o.status==='取消'||o.status==='逾期取消');
+  const canAddTraveler = !cancelled && o.travelers.length < headcount;
   const back = state.curTour ? `<span class="crumb" onclick="openTour(${o.tour_id})">← 返回單團控團</span>` : `<span class="crumb" onclick="go('orders')">← 返回訂單管理</span>`;
   C().innerHTML = `
     ${back}
@@ -352,8 +370,9 @@ window.openOrder = async (id) => {
       <tr><th>旅客類型</th><th>人數</th><th>單價</th><th>小計</th></tr>
       ${o.items.map(i=>`<tr><td>${esc(i.pt_name)}</td><td>${i.qty}</td><td>${money(i.agreed_unit_price)}</td><td>${money(i.final_amount)}</td></tr>`).join('')}
     </table></div>
-    <div class="card" style="margin-top:16px"><h3>旅客名單(${o.travelers.length}) <button class="btn sm secondary" onclick="toggleTravelerForm()">＋ 新增旅客</button></h3>
-      <div id="tvForm" class="formbox hide">
+    <div class="card" style="margin-top:16px"><h3>旅客名單(${o.travelers.length}/${headcount}) ${canAddTraveler?`<button class="btn sm secondary" onclick="toggleTravelerForm()">＋ 新增旅客</button>`:''}</h3>
+      <div class="muted" style="margin:-6px 0 10px">報名人數為 ${headcount} 位,旅客名單最多登記 ${headcount} 位${cancelled?'(訂單已取消,無法新增)':(o.travelers.length>=headcount?'(已額滿;如需加人請另開一筆訂單)':'')}</div>
+      ${canAddTraveler?`<div id="tvForm" class="formbox hide">
         <div class="form">
           <div class="fld"><label>中文姓名 *</label><input id="tv-name" placeholder="王太太"></div>
           <div class="fld"><label>旅客類型</label><select id="tv-pt">${ptOpts}</select></div>
@@ -364,7 +383,7 @@ window.openOrder = async (id) => {
         </div>
         <div style="margin-top:12px"><button class="btn sm" onclick="submitTraveler(${o.order_id})">新增</button>
           <button class="btn sm ghost" onclick="toggleTravelerForm()">取消</button></div>
-      </div>
+      </div>`:''}
       <table><tr><th>姓名</th><th>類型</th><th>身分證</th><th>生日</th><th>性別</th></tr>
       ${o.travelers.map(t=>`<tr><td>${esc(t.name)} <span class="muted">${esc(t.english_name)}</span></td><td>${esc(ptName(t.passenger_type_id))}</td>
         <td>${esc(t.id_no)}</td><td>${esc(t.birthday)}</td><td>${esc(t.gender)}</td></tr>`).join('')

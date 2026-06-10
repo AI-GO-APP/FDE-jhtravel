@@ -377,9 +377,18 @@ function createTour(db, { product_id, tour_code, start_date, end_date, min_pax, 
 // 後台操作:新增旅客(步驟7)— 為訂單登記實際出團的人
 // ───────────────────────────────────────────────────────────
 function addTraveler(db, { order_id, passenger_type_id, name, english_name, birthday, gender, nationality, id_no, passport_no, passport_expire_date }) {
-  const order = db.prepare('SELECT order_id FROM "order" WHERE order_id=?').get(order_id);
+  const order = db.prepare('SELECT order_id, status FROM "order" WHERE order_id=?').get(order_id);
   if (!order) throw new BusinessError('訂單不存在');
+  if (order.status === '取消' || order.status === '逾期取消') throw new BusinessError('訂單已取消,無法新增旅客');
   if (!name) throw new BusinessError('請填寫旅客姓名');
+
+  // 旅客人數不可超過報名人數(order_item 的 qty 總和)
+  const headcount = db.prepare('SELECT COALESCE(SUM(qty),0) AS n FROM order_item WHERE order_id=?').get(order_id).n;
+  const current = db.prepare('SELECT COUNT(*) AS n FROM traveler WHERE order_id=?').get(order_id).n;
+  if (current >= headcount) {
+    throw new BusinessError(`旅客人數已達報名人數上限(${headcount} 位);如需加人,請另開一筆訂單`);
+  }
+
   const r = db.prepare(
     `INSERT INTO traveler (order_id,passenger_type_id,name,english_name,birthday,gender,nationality,id_no,passport_no,passport_expire_date)
      VALUES (?,?,?,?,?,?,?,?,?,?)`

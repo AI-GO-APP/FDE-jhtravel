@@ -107,6 +107,18 @@ function listProducts() {
   return rows;
 }
 
+// 某商品底下的所有團期
+function productTours(product_id) {
+  const product = db.prepare('SELECT * FROM product WHERE product_id=?').get(product_id);
+  if (!product) return null;
+  const tours = db.prepare('SELECT * FROM tour WHERE product_id=? ORDER BY start_date').all(product_id);
+  for (const t of tours) {
+    t.available = availableSeats(t.tour_id).min;
+    t.confirmed_pax = F.countConfirmedPax(db, t.tour_id);
+  }
+  return { product, tours };
+}
+
 // 全部訂單(跨團)
 function listOrders() {
   const rows = db.prepare(
@@ -211,6 +223,11 @@ async function handleApi(req, res, url) {
       return json(res, 200, { passenger_types: passengerTypes(), resource_types: resourceTypes(), contract_templates: contractTemplates() });
     // GET /api/products(商品列表)
     if (req.method === 'GET' && p === '/api/products') return json(res, 200, listProducts());
+    // GET /api/products/:id/tours(某商品底下的團期)
+    if (req.method === 'GET' && seg[1] === 'products' && seg[2] && seg[3] === 'tours') {
+      const d = productTours(Number(seg[2]));
+      return d ? json(res, 200, d) : json(res, 404, { error: '商品不存在' });
+    }
     // GET /api/customers(客戶列表)
     if (req.method === 'GET' && p === '/api/customers') return json(res, 200, listCustomers());
     // GET /api/payments(全部收款)
