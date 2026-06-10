@@ -11,7 +11,7 @@ const PORT = 3000;
 const db = freshDb(); // 每次啟動重建乾淨資料庫(prototype)
 
 const PUBLIC = path.join(__dirname, 'public');
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.pdf': 'application/pdf' };
 
 // ───── 查詢用 helper(組裝畫面資料)─────
 function listTours() {
@@ -20,7 +20,12 @@ function listTours() {
      FROM tour t JOIN product p ON p.product_id=t.product_id
      ORDER BY t.tour_id`
   ).all();
-  return tours.map(t => ({ ...t, available: availableSeats(t.tour_id), confirmed_pax: F.countConfirmedPax(db, t.tour_id) }));
+  return tours.map(t => {
+    const inv = availableSeats(t.tour_id);
+    const signed = F.signedPax(db, t.tour_id);
+    const cap = (t.max_pax && t.max_pax > 0) ? Math.max(0, t.max_pax - signed) : inv.min;
+    return { ...t, available: { min: Math.min(inv.min, cap), detail: inv.detail }, signed_pax: signed, confirmed_pax: F.countConfirmedPax(db, t.tour_id) };
+  });
 }
 
 // 可售名額 = 各資源 (total-used) 的最小值(以最稀缺資源為準)
@@ -40,13 +45,15 @@ function tourDetail(tour_id) {
      FROM tour t JOIN product p ON p.product_id=t.product_id WHERE t.tour_id=?`
   ).get(tour_id);
   if (!tour) return null;
-  const inventory = availableSeats(tour_id).detail;
+  const inv = availableSeats(tour_id);
   const prices = db.prepare(
     `SELECT tp.passenger_type_id, pt.name, tp.price, tp.deposit_ratio
      FROM tour_price tp JOIN passenger_type pt ON pt.passenger_type_id=tp.passenger_type_id
      WHERE tp.tour_id=? ORDER BY tp.passenger_type_id`
   ).all(tour_id);
-  return { tour, inventory, prices, confirmed_pax: F.countConfirmedPax(db, tour_id) };
+  const signed = F.signedPax(db, tour_id);
+  const cap = (tour.max_pax && tour.max_pax > 0) ? Math.max(0, tour.max_pax - signed) : inv.min;
+  return { tour, inventory: inv.detail, prices, confirmed_pax: F.countConfirmedPax(db, tour_id), signed_pax: signed, available: Math.min(inv.min, cap) };
 }
 
 function adminTour(tour_id) {
@@ -113,7 +120,11 @@ function productTours(product_id) {
   if (!product) return null;
   const tours = db.prepare('SELECT * FROM tour WHERE product_id=? ORDER BY start_date').all(product_id);
   for (const t of tours) {
-    t.available = availableSeats(t.tour_id).min;
+    const inv = availableSeats(t.tour_id);
+    const signed = F.signedPax(db, t.tour_id);
+    const cap = (t.max_pax && t.max_pax > 0) ? Math.max(0, t.max_pax - signed) : inv.min;
+    t.available = Math.min(inv.min, cap);
+    t.signed_pax = signed;
     t.confirmed_pax = F.countConfirmedPax(db, t.tour_id);
   }
   return { product, tours };
@@ -174,7 +185,8 @@ function listSettings() {
   const rules = {};
   for (const r of rulesRaw) rules[`${r.passenger_type_id}_${r.resource_type_id}`] = r.qty;
   const cost_categories = db.prepare('SELECT * FROM cost_category ORDER BY cost_category_id').all();
-  return { passenger_types, resource_types, rules, cost_categories };
+  const rule_log = db.prepare('SELECT * FROM consumption_rule_log ORDER BY log_id DESC LIMIT 20').all();
+  return { passenger_types, resource_types, rules, cost_categories, rule_log };
 }
 
 // ───── 路由 ─────
@@ -318,12 +330,36 @@ async function handleApi(req, res, url) {
         .run(b.name, b.is_pass_through ? 1 : 0, b.status, Number(seg[2]));
       return json(res, 200, { ok: true });
     }
-    // PUT /api/consumption-rules  儲存消耗規則(整批 upsert)
+    // PUT /api/consumption-rules  儲存消耗規則(整批 upsert + 寫異動紀錄)
     if (req.method === 'PUT' && p === '/api/consumption-rules') {
       const b = await readBody(req);
-      const up = db.prepare('INSERT OR REPLACE INTO consumption_rule (passenger_type_id,resource_type_id,qty) VALUES (?,?,?)');
-      for (const r of (b.rules || [])) up.run(r.passenger_type_id, r.resource_type_id, Number(r.qty) || 0);
+      F.saveConsumptionRules(db, b);
       return json(res, 200, { ok: true });
+    }
+    // POST /api/resource-types  新增資源類型
+    if (req.method === 'POST' && p === '/api/resource-types') {
+      const b = await readBody(req);
+      if (!b.name) return json(res, 400, { error: '請填寫資源名稱' });
+      const r = db.prepare('INSERT INTO resource_type (name,status) VALUES (?,?)').run(b.name, '啟用');
+      return json(res, 200, { ok: true, resource_type_id: Number(r.lastInsertRowid) });
+    }
+    // POST /api/resource-types/:id  編輯資源類型名稱
+    if (req.method === 'POST' && seg[1] === 'resource-types' && seg[2] && !seg[3]) {
+      const b = await readBody(req);
+      db.prepare('UPDATE resource_type SET name=? WHERE resource_type_id=?').run(b.name, Number(seg[2]));
+      return json(res, 200, { ok: true });
+    }
+    // POST /api/passenger-types/:id  編輯旅客類型名稱
+    if (req.method === 'POST' && seg[1] === 'passenger-types' && seg[2] && !seg[3]) {
+      const b = await readBody(req);
+      db.prepare('UPDATE passenger_type SET name=? WHERE passenger_type_id=?').run(b.name, Number(seg[2]));
+      return json(res, 200, { ok: true });
+    }
+    // POST /api/tours/:id  編輯團期(門檻/上限/日期)
+    if (req.method === 'POST' && seg[1] === 'tours' && seg[2] && !seg[3]) {
+      const b = await readBody(req);
+      const r = F.updateTour(db, { tour_id: Number(seg[2]), ...b });
+      return json(res, 200, r);
     }
 
     // POST /api/orders  建立訂單(流程A/B)
@@ -352,10 +388,33 @@ async function handleApi(req, res, url) {
       F.evaluateFormation(db, r.tour_id);
       return json(res, 200, { ok: true, refund: r.refund });
     }
-    // POST /api/orders/:id/sign  簽約
-    if (req.method === 'POST' && seg[1] === 'orders' && seg[3] === 'sign') {
+    // POST /api/orders/:id/contract  產生契約(未簽)→ 取得專屬該旅客的簽署連結
+    if (req.method === 'POST' && seg[1] === 'orders' && seg[3] === 'contract') {
+      const r = F.generateContract(db, { order_id: Number(seg[2]) });
+      return json(res, 200, { ok: true, ...r });
+    }
+    // GET /api/sign/:token  憑 token 取簽署資料(查無 token 即 404,不公開)
+    if (req.method === 'GET' && seg[1] === 'sign' && seg[2]) {
+      const mc = F.contractByToken(db, seg[2]);
+      if (!mc) return json(res, 404, { error: '簽署連結無效' });
+      const order = db.prepare(
+        `SELECT o.order_no, c.name AS customer_name, t.tour_code, t.start_date, t.end_date, p.name AS product_name, p.region_type
+         FROM "order" o JOIN customer c ON c.customer_id=o.customer_id
+         JOIN tour t ON t.tour_id=o.tour_id JOIN product p ON p.product_id=t.product_id WHERE o.order_id=?`
+      ).get(mc.order_id);
+      const items = db.prepare(
+        `SELECT oi.qty, pt.name AS pt_name FROM order_item oi JOIN passenger_type pt ON pt.passenger_type_id=oi.passenger_type_id WHERE oi.order_id=?`
+      ).all(mc.order_id);
+      const tpl = db.prepare('SELECT template_name, pdf_file FROM contract_template WHERE contract_template_id=?').get(mc.contract_template_id);
+      return json(res, 200, {
+        order, items, template: tpl || null,
+        contract: { contract_no: mc.contract_no, signed_status: mc.signed_status, signer_name: mc.signer_name, signed_at: mc.signed_at },
+      });
+    }
+    // POST /api/sign/:token  憑 token 送出簽署(只有該旅客的連結能簽)
+    if (req.method === 'POST' && seg[1] === 'sign' && seg[2]) {
       const body = await readBody(req);
-      const r = F.signContract(db, { order_id: Number(seg[2]), ...body });
+      const r = F.signByToken(db, { sign_token: seg[2], signer_name: body.signer_name });
       return json(res, 200, { ok: true, ...r });
     }
     // POST /api/orders/:id/expire-now  (展示用)立即讓佔位逾期

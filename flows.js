@@ -7,6 +7,7 @@
 //        保證兩個人不會同時通過「庫存檢查」造成超賣。node:sqlite 為同步 API,
 //        交易期間天然序列化。
 
+const crypto = require('node:crypto');
 const NOW = () => new Date().toISOString().slice(0, 19); // 'YYYY-MM-DDTHH:mm:ss'
 const HOLD_HOURS = 24; // 佔位時限(V1.1 流程B)
 
@@ -41,6 +42,15 @@ function computeConsumption(db, items) {
   return need;
 }
 
+// 已報名人數 = 有效訂單(待付訂金 / 已確認 / 已完成)的 order_item.qty 總和
+function signedPax(db, tour_id) {
+  return db.prepare(
+    `SELECT COALESCE(SUM(oi.qty),0) AS n FROM "order" o
+     JOIN order_item oi ON oi.order_id=o.order_id
+     WHERE o.tour_id=? AND o.status IN ('待付訂金','已確認','已完成')`
+  ).get(tour_id).n;
+}
+
 // ───────────────────────────────────────────────────────────
 // 流程 A + B:報名扣庫存(含防超賣鎖)+ 建立佔位
 // ───────────────────────────────────────────────────────────
@@ -71,6 +81,16 @@ function createOrder(db, { tour_id, customer, channel, order_type, items }) {
         // 任一資源不足 → 整筆 rollback,不扣任何東西(步驟4)
         const remain = row.total_qty - row.used_qty;
         throw new BusinessError(`${row.name}僅剩 ${remain},無法報名(本次需 ${q})`);
+      }
+    }
+
+    // 報名人數上限檢查(max_pax > 0 時才管制)
+    if (tour.max_pax && tour.max_pax > 0) {
+      const newPax = items.reduce((a, i) => a + (i.qty || 0), 0);
+      const signed = signedPax(db, tour_id);
+      if (signed + newPax > tour.max_pax) {
+        const left = tour.max_pax - signed;
+        throw new BusinessError(`報名已達上限(${tour.max_pax} 位),僅剩 ${left} 位,無法報名(本次 ${newPax} 位)`);
       }
     }
 
@@ -123,7 +143,7 @@ function createOrder(db, { tour_id, customer, channel, order_type, items }) {
 // ───────────────────────────────────────────────────────────
 // 流程 B(成功路徑):付訂金 → 已確認;付尾款
 // ───────────────────────────────────────────────────────────
-function payOrder(db, { order_id, payment_type, amount, method }) {
+function payOrder(db, { order_id, payment_type, amount, method, note }) {
   return tx(db, () => {
     const order = db.prepare('SELECT * FROM "order" WHERE order_id=?').get(order_id);
     if (!order) throw new BusinessError('訂單不存在');
@@ -133,7 +153,7 @@ function payOrder(db, { order_id, payment_type, amount, method }) {
     db.prepare(
       `INSERT INTO payment (order_id,payment_type,amount,method,paid_at,note,created_at)
        VALUES (?,?,?,?,?,?,?)`
-    ).run(order_id, payment_type, amount, method || '信用卡', NOW(), '', NOW());
+    ).run(order_id, payment_type, amount, method || '信用卡', NOW(), note || '', NOW());
 
     if (payment_type === '訂金') {
       // 時限內付了訂金 → 已確認,清除 hold_expire_at,位子轉正式佔用(流程B)
@@ -301,28 +321,85 @@ function checkDeadlines(db) {
 }
 
 // ───────────────────────────────────────────────────────────
-// 契約簽署(V1.0 流程四)
+// 契約(V1.0 流程四)
 // ───────────────────────────────────────────────────────────
-function signContract(db, { order_id, contract_template_id, signer_name }) {
+
+// 依訂單所屬團期的「國內/國外」挑選對應的啟用範本
+function resolveTemplate(db, order_id) {
+  const region = db.prepare(
+    `SELECT p.region_type FROM "order" o JOIN tour t ON t.tour_id=o.tour_id
+     JOIN product p ON p.product_id=t.product_id WHERE o.order_id=?`
+  ).get(order_id);
+  const type = region && region.region_type === '國外' ? '國外' : '國內';
+  return db.prepare(
+    'SELECT * FROM contract_template WHERE contract_type=? AND is_active=1 ORDER BY contract_template_id LIMIT 1'
+  ).get(type);
+}
+
+// 產生契約(狀態=未簽 + 不可猜 token)— 後台按下後得到專屬該旅客的簽署連結
+function generateContract(db, { order_id }) {
   return tx(db, () => {
     const order = db.prepare('SELECT * FROM "order" WHERE order_id=?').get(order_id);
     if (!order) throw new BusinessError('訂單不存在');
-    const tpl = db.prepare('SELECT * FROM contract_template WHERE contract_template_id=?').get(contract_template_id);
-    if (!tpl) throw new BusinessError('契約範本不存在');
+    const exists = db.prepare('SELECT * FROM member_contract WHERE order_id=?').get(order_id);
+    if (exists) return { contract_no: exists.contract_no, sign_token: exists.sign_token, signed_status: exists.signed_status };
 
-    const exists = db.prepare('SELECT member_contract_id FROM member_contract WHERE order_id=?').get(order_id);
-    const contractNo = 'C' + order.order_no.slice(1);
-    if (exists) {
-      db.prepare(
-        'UPDATE member_contract SET signed_status=?, signed_at=?, signer_name=?, signed_pdf_url=? WHERE order_id=?'
-      ).run('已簽', NOW(), signer_name, `/contracts/${contractNo}.pdf`, order_id);
-    } else {
-      db.prepare(
-        `INSERT INTO member_contract (order_id,contract_template_id,contract_version,contract_no,signed_status,signed_at,signer_name,signed_pdf_url,created_at)
-         VALUES (?,?,?,?,?,?,?,?,?)`
-      ).run(order_id, contract_template_id, tpl.contract_version, contractNo, '已簽', NOW(), signer_name, `/contracts/${contractNo}.pdf`, NOW());
-    }
-    return { contract_no: contractNo };
+    const tpl = resolveTemplate(db, order_id);
+    if (!tpl) throw new BusinessError('查無對應的啟用契約範本');
+    const contractNo = 'C' + order.order_no.replace(/^O/, '');
+    const token = crypto.randomBytes(18).toString('hex'); // 36 字元,不可枚舉
+    db.prepare(
+      `INSERT INTO member_contract (order_id,contract_template_id,contract_version,contract_no,signed_status,signed_at,signer_name,signed_pdf_url,sign_token,created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`
+    ).run(order_id, tpl.contract_template_id, tpl.contract_version, contractNo, '未簽', null, '', tpl.pdf_file || '', token, NOW());
+    return { contract_no: contractNo, sign_token: token, signed_status: '未簽' };
+  });
+}
+
+// 用 token 取契約(公開簽署頁用;token 對不上就查無)
+function contractByToken(db, token) {
+  if (!token) return null;
+  return db.prepare('SELECT * FROM member_contract WHERE sign_token=?').get(token) || null;
+}
+
+// 客戶憑 token 線上簽署 — 只有拿到該連結的旅客能簽
+function signByToken(db, { sign_token, signer_name }) {
+  return tx(db, () => {
+    const mc = db.prepare('SELECT * FROM member_contract WHERE sign_token=?').get(sign_token);
+    if (!mc) throw new BusinessError('簽署連結無效或已失效');
+    if (!signer_name) throw new BusinessError('請填寫簽署人姓名');
+    if (mc.signed_status === '已簽') return { contract_no: mc.contract_no, already: true };
+    db.prepare('UPDATE member_contract SET signed_status=?, signed_at=?, signer_name=? WHERE member_contract_id=?')
+      .run('已簽', NOW(), signer_name, mc.member_contract_id);
+    return { contract_no: mc.contract_no };
+  });
+}
+
+// 編輯團期(門檻 / 上限 / 日期 / 截止日)
+function updateTour(db, { tour_id, min_pax, max_pax, start_date, end_date, signup_deadline }) {
+  const tour = db.prepare('SELECT * FROM tour WHERE tour_id=?').get(tour_id);
+  if (!tour) throw new BusinessError('團期不存在');
+  db.prepare(
+    'UPDATE tour SET min_pax=?, max_pax=?, start_date=?, end_date=?, signup_deadline=? WHERE tour_id=?'
+  ).run(
+    min_pax != null ? Number(min_pax) : tour.min_pax,
+    max_pax != null ? Number(max_pax) : tour.max_pax,
+    start_date || tour.start_date,
+    end_date || tour.end_date,
+    signup_deadline || tour.signup_deadline,
+    tour_id
+  );
+  return { ok: true };
+}
+
+// 儲存消耗規則 + 寫異動紀錄(誰、何時)
+function saveConsumptionRules(db, { rules, edited_by }) {
+  return tx(db, () => {
+    const up = db.prepare('INSERT OR REPLACE INTO consumption_rule (passenger_type_id,resource_type_id,qty) VALUES (?,?,?)');
+    for (const r of (rules || [])) up.run(r.passenger_type_id, r.resource_type_id, Number(r.qty) || 0);
+    db.prepare('INSERT INTO consumption_rule_log (edited_by,edited_at,detail) VALUES (?,?,?)')
+      .run(edited_by || 'OP 管理者', NOW(), `更新 ${(rules || []).length} 筆規則`);
+    return { ok: true };
   });
 }
 
@@ -342,7 +419,7 @@ function createProduct(db, { product_code, name, region_type, days }) {
 // inventory: [{resource_type_id, total_qty}]
 // prices:    [{passenger_type_id, price, deposit_ratio}]
 // ───────────────────────────────────────────────────────────
-function createTour(db, { product_id, tour_code, start_date, end_date, min_pax, signup_deadline, inventory, prices }) {
+function createTour(db, { product_id, tour_code, start_date, end_date, min_pax, max_pax, signup_deadline, inventory, prices }) {
   if (!product_id) throw new BusinessError('請選擇商品');
   if (!tour_code) throw new BusinessError('請填寫團號');
   if (!start_date) throw new BusinessError('請填寫出發日期');
@@ -352,9 +429,9 @@ function createTour(db, { product_id, tour_code, start_date, end_date, min_pax, 
     if (!prod) throw new BusinessError('商品不存在');
 
     const r = db.prepare(
-      `INSERT INTO tour (tour_code,product_id,start_date,end_date,min_pax,signup_deadline,status,manual_group_status,confirmed_at,created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`
-    ).run(tour_code, product_id, start_date, end_date || start_date, Number(min_pax) || 0,
+      `INSERT INTO tour (tour_code,product_id,start_date,end_date,min_pax,max_pax,signup_deadline,status,manual_group_status,confirmed_at,created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+    ).run(tour_code, product_id, start_date, end_date || start_date, Number(min_pax) || 0, Number(max_pax) || 0,
           signup_deadline || start_date, '報名中', '待定', null, NOW());
     const tour_id = Number(r.lastInsertRowid);
 
@@ -430,8 +507,14 @@ module.exports = {
   countConfirmedPax,
   releaseExpiredHolds,
   checkDeadlines,
-  signContract,
+  generateContract,
+  contractByToken,
+  signByToken,
+  resolveTemplate,
   createProduct,
   createTour,
+  updateTour,
   addTraveler,
+  saveConsumptionRules,
+  signedPax,
 };

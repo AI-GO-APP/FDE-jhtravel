@@ -66,6 +66,14 @@ function createSchema(db) {
     status            TEXT
   );
 
+  -- 消耗規則異動紀錄(誰、何時改過)
+  CREATE TABLE consumption_rule_log (
+    log_id      INTEGER PRIMARY KEY,
+    edited_by   TEXT,
+    edited_at   TEXT,
+    detail      TEXT
+  );
+
   CREATE TABLE customer (
     customer_id  INTEGER PRIMARY KEY,
     name         TEXT,
@@ -83,6 +91,7 @@ function createSchema(db) {
     contract_type         TEXT,
     contract_version      TEXT,
     content               TEXT,
+    pdf_file              TEXT,    -- 定型化契約 PDF(放 public/contracts/)
     is_active             INTEGER,
     created_at            TEXT
   );
@@ -94,7 +103,8 @@ function createSchema(db) {
     product_id       INTEGER,
     start_date       TEXT,
     end_date         TEXT,
-    min_pax          INTEGER,   -- 成團門檻
+    min_pax          INTEGER,   -- 成團門檻(最低人數)
+    max_pax          INTEGER,   -- 報名人數上限(0/NULL=不另設上限,以庫存為準)
     signup_deadline  TEXT,      -- 報名截止日(V1.1 流程D 不成團判定)
     status           TEXT,      -- 草稿 / 報名中 / 已成團 / 不成團取消 / 關閉
     manual_group_status TEXT,   -- 人工成團狀態:主管手動決定(待定 / 強制成團 / 強制不成團)
@@ -169,6 +179,7 @@ function createSchema(db) {
     signed_at             TEXT,
     signer_name           TEXT,
     signed_pdf_url        TEXT,
+    sign_token            TEXT,    -- 不可猜的簽署連結 token(只有該旅客拿到)
     created_at            TEXT
   );
 
@@ -228,6 +239,10 @@ function seed(db) {
   cc.run(3, '餐食', 1, '啟用');
   cc.run(4, '服務費', 0, '啟用');
 
+  // 消耗規則初始異動紀錄
+  db.prepare('INSERT INTO consumption_rule_log (edited_by,edited_at,detail) VALUES (?,?,?)')
+    .run('系統', now, '建立初始消耗規則');
+
   // ============================================================
   // 種子資料:照「資料庫總覽」的故事 — 王小明報名花蓮三日遊(步驟 1~10)
   // ============================================================
@@ -239,18 +254,22 @@ function seed(db) {
   pd.run(1, 'HUA3D', '花蓮三日遊', '國內', 3, '上架', now);   // ← 故事主角
   pd.run(2, 'HOK5', '北海道五日遊', '國外', 5, '上架', now);   // 另一個商品,讓「開團」有選擇
 
-  // 契約範本
-  db.prepare(
-    'INSERT INTO contract_template (contract_template_id,template_code,template_name,contract_type,contract_version,content,is_active,created_at) VALUES (?,?,?,?,?,?,?,?)'
-  ).run(1, 'DOMESTIC', '國內旅遊定型化契約', '國內', 'V1', '本契約依交通部觀光署國內旅遊定型化契約範本…', 1, now);
-
-  // 步驟2. 團期(tour)— 花蓮三日遊,2026/07/01 出發
-  const tr = db.prepare(
-    'INSERT INTO tour (tour_id,tour_code,product_id,start_date,end_date,min_pax,signup_deadline,status,manual_group_status,confirmed_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
+  // 契約範本(國內 / 國外 兩份定型化契約;V1 = 交通部觀光署定型化契約 PDF)
+  const tpl = db.prepare(
+    'INSERT INTO contract_template (contract_template_id,template_code,template_name,contract_type,contract_version,content,pdf_file,is_active,created_at) VALUES (?,?,?,?,?,?,?,?,?)'
   );
-  tr.run(1, 'HUA3D260701A', 1, '2026-07-01', '2026-07-03', 16, '2026-06-25', '報名中', '待定', null, now);
+  tpl.run(1, 'DOMESTIC', '國內旅遊定型化契約', '國內', 'V1',
+    '依交通部觀光署「國內旅遊定型化契約範本」', '/contracts/domestic-v1.pdf', 1, now);
+  tpl.run(2, 'OVERSEAS', '國外旅遊定型化契約', '國外', 'V1',
+    '依交通部觀光署「國外旅遊定型化契約範本」', '/contracts/overseas-v1.pdf', 1, now);
+
+  // 步驟2. 團期(tour)— 花蓮三日遊,2026/07/01 出發。max_pax=報名上限
+  const tr = db.prepare(
+    'INSERT INTO tour (tour_id,tour_code,product_id,start_date,end_date,min_pax,max_pax,signup_deadline,status,manual_group_status,confirmed_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
+  );
+  tr.run(1, 'HUA3D260701A', 1, '2026-07-01', '2026-07-03', 16, 40, '2026-06-25', '報名中', '待定', null, now);
   // 第二團(北海道,空團,讓後台列表不只一筆、也可示範開團結果)
-  tr.run(2, 'HOK5260810A', 2, '2026-08-10', '2026-08-14', 10, '2026-07-20', '報名中', '待定', null, now);
+  tr.run(2, 'HOK5260810A', 2, '2026-08-10', '2026-08-14', 10, 30, '2026-07-20', '報名中', '待定', null, now);
 
   // 步驟3. 庫存(tour_inventory)— 車位42、床位40
   const iv = db.prepare(
@@ -296,8 +315,8 @@ function seed(db) {
 
   // 步驟9. 報名契約(member_contract)— 王小明這張訂單簽的契約
   db.prepare(
-    'INSERT INTO member_contract (member_contract_id,order_id,contract_template_id,contract_version,contract_no,signed_status,signed_at,signer_name,signed_pdf_url,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)'
-  ).run(1, 1, 1, 'V1', 'C-HUA3D260701A', '已簽', '2026-06-05T10:30:00', '王小明', '/contracts/C-HUA3D260701A.pdf', '2026-06-05T10:30:00');
+    'INSERT INTO member_contract (member_contract_id,order_id,contract_template_id,contract_version,contract_no,signed_status,signed_at,signer_name,signed_pdf_url,sign_token,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
+  ).run(1, 1, 1, 'V1', 'C-HUA3D260701A', '已簽', '2026-06-05T10:30:00', '王小明', '/contracts/domestic-v1.pdf', 'seedwang0001', '2026-06-05T10:30:00');
 
   // 步驟10. 收款(payment)— 訂金20,000、尾款68,000(合計88,000)
   const pay = db.prepare(

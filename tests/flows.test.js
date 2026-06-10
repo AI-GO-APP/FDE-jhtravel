@@ -126,6 +126,38 @@ async function run() {
   check('重複取消防呆(不報錯、不重複歸還)', dup.status === 200, JSON.stringify(dup.body));
   check('重複取消後庫存不變', car((await req('GET', `/api/tours/${tA}`)).body).remain === carAfter);
 
+  // ── 報名上限(max_pax)+ 編輯 ──
+  console.log('\n[報名上限] max_pax 限制 + 編輯團期');
+  const pC = await req('POST', '/api/products', { name: '上限測試', region_type: '國內', days: 1 });
+  const tC = await req('POST', '/api/tours', {
+    product_id: pC.body.product_id, tour_code: 'FLOW-CAP', start_date: '2026-12-01', min_pax: 2, max_pax: 4, signup_deadline: '2026-11-01',
+    inventory: [{ resource_type_id: 1, total_qty: 50 }, { resource_type_id: 2, total_qty: 50 }],
+    prices: [{ passenger_type_id: 1, price: 1000, deposit_ratio: 0.3 }],
+  });
+  const cid = tC.body.tour_id;
+  const cap1 = await req('POST', '/api/orders', { tour_id: cid, customer: { name: '甲', phone: '09c1' }, items: [{ passenger_type_id: 1, qty: 3 }] });
+  check('上限內報名成功(3 ≤ 4)', cap1.status === 200 && cap1.body.ok, JSON.stringify(cap1.body));
+  const cap2 = await req('POST', '/api/orders', { tour_id: cid, customer: { name: '乙', phone: '09c2' }, items: [{ passenger_type_id: 1, qty: 2 }] });
+  check('超過上限被擋(3+2 > 4)', cap2.status === 400 && /上限/.test(cap2.body.error || ''), JSON.stringify(cap2.body));
+  await req('POST', `/api/tours/${cid}`, { min_pax: 2, max_pax: 10 });
+  const capEd = await req('POST', '/api/orders', { tour_id: cid, customer: { name: '丙', phone: '09c3' }, items: [{ passenger_type_id: 1, qty: 2 }] });
+  check('調高上限後可再報名(改為 10)', capEd.status === 200 && capEd.body.ok, JSON.stringify(capEd.body));
+
+  // ── 契約:產生 token 連結 + 憑 token 線上簽署 ──
+  console.log('\n[契約] 產生簽署連結 + 憑 token 簽署(僅此連結可簽)');
+  const oc = await req('POST', '/api/orders', { tour_id: cid, customer: { name: '簽約客', phone: '09c4' }, items: [{ passenger_type_id: 1, qty: 1 }] });
+  const gen = await req('POST', `/api/orders/${oc.body.order_id}/contract`);
+  check('產生契約並取得 token(未簽)', gen.status === 200 && !!gen.body.sign_token && gen.body.signed_status === '未簽', JSON.stringify(gen.body).slice(0, 90));
+  const token = gen.body.sign_token;
+  const info = await req('GET', '/api/sign/' + token);
+  check('憑 token 取得簽署資料、對應國內範本', info.status === 200 && /國內/.test(info.body.template.template_name), JSON.stringify(info.body.template));
+  const bad = await req('GET', '/api/sign/zzz' + token);
+  check('錯誤 token → 查無(404,非公開)', bad.status === 404, bad.status);
+  const sg = await req('POST', '/api/sign/' + token, { signer_name: '簽約客' });
+  check('憑 token 簽署成功', sg.status === 200 && !!sg.body.contract_no, JSON.stringify(sg.body));
+  const info2 = await req('GET', '/api/sign/' + token);
+  check('簽署後狀態 → 已簽', info2.body.contract.signed_status === '已簽', info2.body.contract.signed_status);
+
   // 不成團:開一個截止日已過、0 人的團 → 判定不成團取消
   const tB = await openTour({ tour_code: 'FLOW-B', min_pax: 8, deadline: '2020-01-01', total: 16 });
   await req('POST', '/api/jobs/check-deadlines', {});
