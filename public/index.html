@@ -3,19 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>旅遊團控系統 Prototype</title>
+<title>旅遊團控系統 — 後台</title>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; background: #f4f6f9; color: #222; }
-  header { background: #1e3a5f; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 24px; }
+  header { background: #1e3a5f; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
   header h1 { font-size: 18px; margin: 0; font-weight: 600; }
   nav button { background: none; border: none; color: #cfe0f2; font-size: 15px; cursor: pointer; padding: 6px 4px; border-bottom: 2px solid transparent; }
   nav button.active { color: #fff; border-bottom-color: #4da3ff; font-weight: 600; }
-  .container { max-width: 1100px; margin: 20px auto; padding: 0 20px; }
+  .container { max-width: 1120px; margin: 20px auto; padding: 0 20px; }
   .card { background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.08); padding: 18px 20px; margin-bottom: 16px; }
-  .card h2 { margin: 0 0 12px; font-size: 16px; color: #1e3a5f; }
+  .card h2 { margin: 0 0 12px; font-size: 16px; color: #1e3a5f; display: flex; justify-content: space-between; align-items: center; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #eee; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
   th { color: #667; font-weight: 600; background: #fafbfc; }
   .badge { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: 12px; font-weight: 600; }
   .b-open { background: #e3f0ff; color: #1565c0; }
@@ -25,39 +25,42 @@
   .b-cancel { background: #efefef; color: #777; }
   button.btn { background: #1e6fd9; color: #fff; border: none; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
   button.btn:hover { background: #1559b0; }
-  button.btn.ghost { background: #fff; color: #1e6fd9; border: 1px solid #cdd; }
-  button.btn.danger { background: #d9534f; }
+  button.btn.ghost { background: #fff; color: #1e6fd9; border: 1px solid #bcd; }
   button.btn.gray { background: #6c757d; }
-  button.btn.sm { padding: 4px 9px; font-size: 12px; }
+  button.btn.sm { padding: 4px 10px; font-size: 12px; }
   a.link { color: #1e6fd9; cursor: pointer; text-decoration: none; }
   a.link:hover { text-decoration: underline; }
   .row { display: flex; gap: 16px; flex-wrap: wrap; }
-  .col { flex: 1; min-width: 260px; }
+  .col { flex: 1; min-width: 240px; }
   label { display: block; font-size: 13px; color: #556; margin: 10px 0 4px; }
   input, select { width: 100%; padding: 8px; border: 1px solid #ccd; border-radius: 6px; font-size: 14px; }
   .inv-bar { background: #eee; border-radius: 5px; height: 8px; overflow: hidden; margin-top: 4px; }
   .inv-bar > span { display: block; height: 100%; background: #4da3ff; }
   .muted { color: #889; font-size: 13px; }
-  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
   .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #222; color: #fff; padding: 11px 20px; border-radius: 8px; font-size: 14px; opacity: 0; transition: opacity .2s; z-index: 99; max-width: 80%; }
   .toast.show { opacity: 1; }
   .toast.err { background: #c62828; }
   .pax-row { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
   .pax-row span { flex: 1; }
-  .pax-row input { width: 70px; }
+  .pax-row input { width: 80px; }
   .kv { display: flex; padding: 5px 0; border-bottom: 1px dashed #eee; font-size: 14px; }
-  .kv b { width: 110px; color: #667; font-weight: 500; }
+  .kv b { width: 120px; color: #667; font-weight: 500; }
   .progress { background: #eee; border-radius: 6px; height: 22px; overflow: hidden; position: relative; }
   .progress > span { display: block; height: 100%; background: linear-gradient(90deg,#4da3ff,#1b8a4b); }
   .progress > i { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-style: normal; color: #fff; font-weight: 600; text-shadow: 0 1px 1px rgba(0,0,0,.3); }
+  .formbox { background: #f8fafc; border: 1px solid #e3e8ef; border-radius: 8px; padding: 14px 16px; margin-top: 12px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  .hide { display: none; }
+  .steps { font-size: 12px; color: #889; margin: 2px 0 0; }
 </style>
 </head>
 <body>
 <header>
-  <h1>🧭 旅遊團控系統 <span style="font-weight:400;font-size:13px;opacity:.7">Prototype · 第一階段地基</span></h1>
+  <h1>🧭 旅遊團控系統 <span style="font-weight:400;font-size:13px;opacity:.7">後台 · MVP</span></h1>
   <nav>
-    <button data-view="front" class="active">前台 · 團期報名</button>
-    <button data-view="admin">後台 · 團控管理</button>
+    <button data-view="products">商品管理</button>
+    <button data-view="tours" class="active">團期管理</button>
   </nav>
 </header>
 <div class="container" id="app"></div>
@@ -73,166 +76,151 @@ const api = async (url, method='GET', body) => {
 };
 const toast = (msg, err=false) => {
   const t = $('#toast'); t.textContent = msg; t.className = 'toast show' + (err?' err':'');
-  setTimeout(() => t.className = 'toast', 2600);
-};
-const statusBadge = (s) => {
-  const map = { '報名中':'b-open','已成團':'b-confirmed','不成團取消':'b-fail',
-    '待付訂金':'b-wait','已確認':'b-confirmed','取消':'b-cancel','逾期取消':'b-cancel' };
-  return `<span class="badge ${map[s]||'b-cancel'}">${s}</span>`;
+  setTimeout(() => t.className = 'toast', 2800);
 };
 const money = (n) => 'NT$' + (n||0).toLocaleString();
+const esc = (s) => (s==null?'':String(s)).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const statusBadge = (s) => {
+  const map = { '報名中':'b-open','已成團':'b-confirmed','不成團取消':'b-fail','草稿':'b-cancel','關閉':'b-cancel',
+    '待付訂金':'b-wait','已確認':'b-confirmed','取消':'b-cancel','逾期取消':'b-cancel' };
+  return `<span class="badge ${map[s]||'b-cancel'}">${esc(s)}</span>`;
+};
 
-let META = { passenger_types: [], contract_templates: [] };
-const state = { view: 'front' };
+let META = { passenger_types: [], resource_types: [], contract_templates: [] };
+const state = { view: 'tours', curTour: null, curOrder: null };
 
-// ───────── 前台 ─────────
-async function renderFront() {
-  const tours = await api('/api/tours');
+// ═══════════════ 商品管理(步驟1)═══════════════
+async function renderProducts() {
+  const products = await api('/api/products');
   $('#app').innerHTML = `
     <div class="card">
-      <h2>團期列表</h2>
-      <table><thead><tr>
-        <th>行程名稱</th><th>團號</th><th>出發日期</th><th>可售名額</th><th>成團進度</th><th>狀態</th><th></th>
-      </tr></thead><tbody>
-      ${tours.map(t => `<tr>
-        <td>${t.product_name} <span class="muted">${t.region_type}·${t.days}天</span></td>
-        <td>${t.tour_code}</td>
-        <td>${t.start_date}</td>
-        <td><b>${t.available.min}</b> 位</td>
-        <td>${t.confirmed_pax}/${t.min_pax} 人</td>
-        <td>${statusBadge(t.status)}</td>
-        <td><a class="link" onclick="viewTour(${t.tour_id})">查看 / 報名 →</a></td>
-      </tr>`).join('')}
+      <h2>商品管理 <button class="btn sm" onclick="toggleProductForm()">＋ 新增商品</button></h2>
+      <p class="steps">步驟1:公司先建立可以賣的行程商品(例:花蓮三日遊)</p>
+      <div id="product-form" class="formbox hide">
+        <div class="grid2">
+          <div><label>商品代碼</label><input id="p-code" placeholder="HUA3D"></div>
+          <div><label>行程名稱 *</label><input id="p-name" placeholder="花蓮三日遊"></div>
+          <div><label>區域類型</label><select id="p-region"><option>國內</option><option>國外</option></select></div>
+          <div><label>天數</label><input id="p-days" type="number" min="1" value="3"></div>
+        </div>
+        <div style="margin-top:12px"><button class="btn" onclick="submitProduct()">建立商品</button>
+          <button class="btn ghost" onclick="toggleProductForm()">取消</button></div>
+      </div>
+      <table style="margin-top:12px"><thead><tr><th>代碼</th><th>行程名稱</th><th>區域</th><th>天數</th><th>狀態</th><th>已開團數</th></tr></thead><tbody>
+      ${products.map(p => `<tr>
+        <td>${esc(p.product_code)}</td><td>${esc(p.name)}</td><td>${esc(p.region_type)}</td>
+        <td>${p.days}天</td><td>${statusBadge(p.status)}</td><td>${p.tour_count} 團</td>
+      </tr>`).join('') || '<tr><td colspan=6 class="muted">尚無商品</td></tr>'}
       </tbody></table>
     </div>`;
 }
-
-window.viewTour = async (id) => {
-  const d = await api('/api/tours/'+id);
-  const t = d.tour;
-  const canSignup = t.status === '報名中';
-  $('#app').innerHTML = `
-    <a class="link" onclick="renderFront()">← 返回團期列表</a>
-    <div class="row" style="margin-top:12px">
-      <div class="col">
-        <div class="card">
-          <h2>${d.tour.product_name} ${statusBadge(t.status)}</h2>
-          <div class="kv"><b>團號</b>${t.tour_code}</div>
-          <div class="kv"><b>出發 / 回程</b>${t.start_date} ~ ${t.end_date}</div>
-          <div class="kv"><b>報名截止</b>${t.signup_deadline}</div>
-          <div class="kv"><b>成團門檻</b>${t.min_pax} 人(目前已確認 ${d.confirmed_pax} 人)</div>
-        </div>
-        <div class="card">
-          <h2>庫存資訊</h2>
-          ${d.inventory.map(i => {
-            const pct = Math.round(i.used_qty/i.total_qty*100);
-            return `<div style="margin-bottom:10px">
-              <div style="display:flex;justify-content:space-between;font-size:14px">
-                <span>${i.name}</span><span>剩 <b>${i.remain}</b> / ${i.total_qty}</span></div>
-              <div class="inv-bar"><span style="width:${pct}%"></span></div></div>`;
-          }).join('')}
-        </div>
-        <div class="card">
-          <h2>售價資訊</h2>
-          <table><thead><tr><th>旅客類型</th><th>售價</th><th>訂金比例</th></tr></thead><tbody>
-          ${d.prices.map(p => `<tr><td>${p.name}</td><td>${money(p.price)}</td><td>${Math.round(p.deposit_ratio*100)}%</td></tr>`).join('')}
-          </tbody></table>
-        </div>
-      </div>
-      <div class="col">
-        <div class="card">
-          <h2>立即報名</h2>
-          ${canSignup ? signupForm(d) : `<p class="muted">此團狀態為「${t.status}」,目前不開放報名。</p>`}
-        </div>
-      </div>
-    </div>`;
-};
-
-function signupForm(d) {
-  const rows = d.prices.map(p => `
-    <div class="pax-row">
-      <span>${p.name} <span class="muted">${money(p.price)}</span></span>
-      <input type="number" min="0" value="0" data-pt="${p.passenger_type_id}" data-price="${p.price}" oninput="calcTotal()">
-    </div>`).join('');
-  return `
-    <label>聯絡人姓名</label><input id="f-name" placeholder="王小明">
-    <label>聯絡電話</label><input id="f-phone" placeholder="0912345678">
-    <label>Email</label><input id="f-email" placeholder="(選填)">
-    <label>通路來源</label>
-    <select id="f-channel"><option>官網</option><option>同業</option><option>電話</option></select>
-    <hr style="border:none;border-top:1px solid #eee;margin:14px 0">
-    <label>旅客人數</label>
-    ${rows}
-    <div style="text-align:right;margin:10px 0;font-size:15px">預估總額:<b id="f-total">NT$0</b></div>
-    <button class="btn" style="width:100%" onclick="submitSignup(${d.tour.tour_id})">建立訂單(扣庫存佔位)</button>
-    <p class="muted" style="margin-top:8px">建立後狀態為「待付訂金」,須於 24 小時內付訂金,否則自動釋放。</p>`;
-}
-window.calcTotal = () => {
-  let sum = 0;
-  document.querySelectorAll('[data-pt]').forEach(i => sum += (+i.value||0) * (+i.dataset.price));
-  $('#f-total').textContent = money(sum);
-};
-window.submitSignup = async (tour_id) => {
-  const name = $('#f-name').value.trim();
-  if (!name) return toast('請填寫聯絡人姓名', true);
-  const items = [];
-  document.querySelectorAll('[data-pt]').forEach(i => {
-    const q = +i.value || 0; if (q > 0) items.push({ passenger_type_id: +i.dataset.pt, qty: q });
-  });
-  if (!items.length) return toast('請至少選擇一位旅客', true);
+window.toggleProductForm = () => $('#product-form').classList.toggle('hide');
+window.submitProduct = async () => {
+  const name = $('#p-name').value.trim();
+  if (!name) return toast('請填寫行程名稱', true);
   try {
-    const r = await api('/api/orders', 'POST', {
-      tour_id, channel: $('#f-channel').value,
-      customer: { name, phone: $('#f-phone').value.trim(), email: $('#f-email').value.trim() },
-      items
+    await api('/api/products', 'POST', {
+      product_code: $('#p-code').value.trim(), name,
+      region_type: $('#p-region').value, days: +$('#p-days').value || 1
     });
-    toast(`報名成功!訂單 ${r.order_no},請於 24h 內付訂金`);
-    viewTour(tour_id);
+    toast('商品已建立'); renderProducts();
   } catch (e) { toast(e.message, true); }
 };
 
-// ───────── 後台 ─────────
-async function renderAdmin() {
+// ═══════════════ 團期管理(步驟2~4)═══════════════
+async function renderTours() {
   const tours = await api('/api/tours');
   $('#app').innerHTML = `
     <div class="card">
       <div class="toolbar">
-        <button class="btn gray sm" onclick="runJob('release-expired')">▶ 釋放逾期未付佔位(流程B)</button>
-        <button class="btn gray sm" onclick="runJob('check-deadlines')">▶ 截止日成團/不成團判定(流程D)</button>
-        <span class="muted" style="align-self:center">背景排程每 30 秒自動執行;此處可手動觸發展示。</span>
+        <button class="btn sm" onclick="openTourForm()">＋ 開團</button>
+        <button class="btn gray sm" onclick="runJob('release-expired')">▶ 釋放逾期未付佔位</button>
+        <button class="btn gray sm" onclick="runJob('check-deadlines')">▶ 截止日成團判定</button>
+        <span class="muted">背景排程每 30 秒自動執行,此處可手動觸發</span>
       </div>
-      <h2>團控管理 · 選擇團期</h2>
-      <table><thead><tr><th>團號</th><th>行程</th><th>出發</th><th>成團進度</th><th>狀態</th><th></th></tr></thead><tbody>
+      <h2>團期管理</h2>
+      <p class="steps">步驟2~4:開一個真正出發的團,設定可賣位置(庫存)與售價</p>
+      <div id="tour-form" class="formbox hide"></div>
+      <table style="margin-top:12px"><thead><tr>
+        <th>團號</th><th>行程</th><th>出發</th><th>可售</th><th>成團進度</th><th>狀態</th><th></th>
+      </tr></thead><tbody>
       ${tours.map(t => `<tr>
-        <td>${t.tour_code}</td><td>${t.product_name}</td><td>${t.start_date}</td>
+        <td>${esc(t.tour_code)}</td><td>${esc(t.product_name)} <span class="muted">${esc(t.region_type)}·${t.days}天</span></td>
+        <td>${t.start_date}</td><td><b>${t.available.min}</b></td>
         <td>${t.confirmed_pax}/${t.min_pax}</td><td>${statusBadge(t.status)}</td>
-        <td><a class="link" onclick="viewAdminTour(${t.tour_id})">進入團控 →</a></td>
-      </tr>`).join('')}
+        <td><a class="link" onclick="viewTour(${t.tour_id})">進入團控 →</a></td>
+      </tr>`).join('') || '<tr><td colspan=7 class="muted">尚無團期,點「開團」建立</td></tr>'}
       </tbody></table>
     </div>`;
 }
+
+window.openTourForm = async () => {
+  const box = $('#tour-form');
+  if (!box.classList.contains('hide')) { box.classList.add('hide'); return; }
+  const products = await api('/api/products');
+  const invRows = META.resource_types.map(r =>
+    `<div><label>${esc(r.name)} 總數</label><input type="number" min="0" value="0" data-res="${r.resource_type_id}"></div>`).join('');
+  const priceRows = META.passenger_types.map(p =>
+    `<div><label>${esc(p.name)} 售價</label><input type="number" min="0" value="0" data-pt="${p.passenger_type_id}"></div>`).join('');
+  box.innerHTML = `
+    <div class="grid2">
+      <div><label>商品 *</label><select id="t-product">${products.map(p=>`<option value="${p.product_id}">${esc(p.name)}</option>`).join('')}</select></div>
+      <div><label>團號 *</label><input id="t-code" placeholder="HUA3D260701A"></div>
+      <div><label>出發日期 *</label><input id="t-start" type="date"></div>
+      <div><label>回程日期</label><input id="t-end" type="date"></div>
+      <div><label>成團人數(門檻)</label><input id="t-min" type="number" min="0" value="16"></div>
+      <div><label>報名截止日</label><input id="t-deadline" type="date"></div>
+    </div>
+    <label style="margin-top:14px">庫存(可賣幾個位置)</label>
+    <div class="grid2">${invRows}</div>
+    <label style="margin-top:14px">售價(每種旅客賣多少)</label>
+    <div class="grid2">${priceRows}</div>
+    <div style="margin-top:14px"><button class="btn" onclick="submitTour()">建立團期</button>
+      <button class="btn ghost" onclick="openTourForm()">取消</button></div>`;
+  box.classList.remove('hide');
+};
+window.submitTour = async () => {
+  const code = $('#t-code').value.trim();
+  const start = $('#t-start').value;
+  if (!code) return toast('請填寫團號', true);
+  if (!start) return toast('請選擇出發日期', true);
+  const inventory = [...document.querySelectorAll('[data-res]')].map(i => ({ resource_type_id: +i.dataset.res, total_qty: +i.value||0 }));
+  const prices = [...document.querySelectorAll('[data-pt]')].map(i => ({ passenger_type_id: +i.dataset.pt, price: +i.value||0, deposit_ratio: 0.3 }));
+  try {
+    await api('/api/tours', 'POST', {
+      product_id: +$('#t-product').value, tour_code: code,
+      start_date: start, end_date: $('#t-end').value || start,
+      min_pax: +$('#t-min').value||0, signup_deadline: $('#t-deadline').value || start,
+      inventory, prices
+    });
+    toast('團期已建立'); renderTours();
+  } catch (e) { toast(e.message, true); }
+};
+
 window.runJob = async (job) => {
   try {
     const r = await api('/api/jobs/'+job, 'POST');
     if (job === 'release-expired') toast(`釋放 ${r.released.length} 筆逾期佔位`);
     else toast(`判定完成:${r.result.map(x=>x.tour_code+'→'+x.outcome).join('、') || '無到期團'}`);
-    if (state.curTour) viewAdminTour(state.curTour); else renderAdmin();
+    state.curTour ? viewTour(state.curTour) : renderTours();
   } catch (e) { toast(e.message, true); }
 };
 
-window.viewAdminTour = async (id) => {
-  state.curTour = id;
+// ═══════════════ 團控詳情(含建立訂單 步驟5~6)═══════════════
+window.viewTour = async (id) => {
+  state.curTour = id; state.curOrder = null;
   const d = await api('/api/admin/tours/'+id);
   const t = d.tour;
-  const pct = Math.min(100, Math.round(d.confirmed_pax/t.min_pax*100));
+  const pct = t.min_pax ? Math.min(100, Math.round(d.confirmed_pax/t.min_pax*100)) : 0;
   $('#app').innerHTML = `
-    <a class="link" onclick="state.curTour=null;renderAdmin()">← 返回團列表</a>
+    <a class="link" onclick="state.curTour=null;renderTours()">← 返回團期列表</a>
     <div class="card" style="margin-top:12px">
-      <h2>${t.product_name} · ${t.tour_code} ${statusBadge(t.status)}</h2>
+      <h2>${esc(t.product_name)} · ${esc(t.tour_code)} ${statusBadge(t.status)}</h2>
       <div class="row">
         <div class="col">
-          <div class="kv"><b>出發</b>${t.start_date} ~ ${t.end_date}</div>
+          <div class="kv"><b>出發 / 回程</b>${t.start_date} ~ ${t.end_date}</div>
           <div class="kv"><b>報名截止</b>${t.signup_deadline}</div>
+          <div class="kv"><b>人工成團狀態</b>${esc(t.manual_group_status||'—')}</div>
           ${t.confirmed_at ? `<div class="kv"><b>成團時間</b>${t.confirmed_at.replace('T',' ')}</div>` : ''}
         </div>
         <div class="col">
@@ -244,80 +232,105 @@ window.viewAdminTour = async (id) => {
     <div class="card">
       <h2>庫存狀況</h2>
       <table><thead><tr><th>資源</th><th>總量</th><th>已用</th><th>剩餘</th><th>使用率</th></tr></thead><tbody>
-      ${d.inventory.map(i => {
-        const p = Math.round(i.used_qty/i.total_qty*100);
-        return `<tr><td>${i.name}</td><td>${i.total_qty}</td><td>${i.used_qty}</td><td>${i.remain}</td>
-        <td><div class="inv-bar" style="width:120px"><span style="width:${p}%"></span></div></td></tr>`;
-      }).join('')}
+      ${d.inventory.map(i => { const p = i.total_qty?Math.round(i.used_qty/i.total_qty*100):0;
+        return `<tr><td>${esc(i.name)}</td><td>${i.total_qty}</td><td>${i.used_qty}</td><td>${i.remain}</td>
+        <td><div class="inv-bar" style="width:120px"><span style="width:${p}%"></span></div></td></tr>`; }).join('')}
       </tbody></table>
     </div>
     <div class="card">
-      <h2>報名狀況(${d.orders.length} 筆)</h2>
-      <table><thead><tr><th>訂單編號</th><th>聯絡人</th><th>人數明細</th><th>金額</th><th>已收</th><th>狀態</th><th>操作</th></tr></thead><tbody>
+      <h2>報名訂單(${d.orders.length} 筆) <button class="btn sm" onclick="openOrderForm(${id})">＋ 建立訂單</button></h2>
+      <p class="steps">步驟5~6:客戶報名 → 建立訂單與明細(系統依消耗規則自動扣庫存)</p>
+      <div id="order-form" class="formbox hide"></div>
+      <table style="margin-top:12px"><thead><tr><th>訂單編號</th><th>聯絡人</th><th>明細</th><th>金額</th><th>已收</th><th>狀態</th><th>操作</th></tr></thead><tbody>
       ${d.orders.map(o => orderRow(o)).join('') || '<tr><td colspan=7 class="muted">尚無報名</td></tr>'}
       </tbody></table>
     </div>`;
 };
 
 function orderRow(o) {
-  const itemsTxt = o.items.map(i => `${i.pt_name}×${i.qty}`).join('、');
+  const itemsTxt = o.items.map(i => `${esc(i.pt_name)}×${i.qty}`).join('、');
   const total = o.items.reduce((s,i)=>s+i.final_amount,0);
   const active = o.status === '待付訂金' || o.status === '已確認';
   let ops = `<a class="link" onclick="viewOrder(${o.order_id})">明細</a>`;
-  if (o.status === '待付訂金') {
-    ops += ` · <a class="link" onclick="pay(${o.order_id},'訂金',${Math.round(total*0.3)})">收訂金</a>`;
-    ops += ` · <a class="link" onclick="expireNow(${o.order_id})">模擬逾期</a>`;
-  }
-  if (o.status === '已確認') {
-    if (o.paid < total) ops += ` · <a class="link" onclick="pay(${o.order_id},'尾款',${total-o.paid})">收尾款</a>`;
-  }
+  if (o.status === '待付訂金') ops += ` · <a class="link" onclick="pay(${o.order_id},'訂金',${Math.round(total*0.3)})">收訂金</a>`;
+  if (o.status === '已確認' && o.paid < total) ops += ` · <a class="link" onclick="pay(${o.order_id},'尾款',${total-o.paid})">收尾款</a>`;
   if (active) ops += ` · <a class="link" style="color:#c62828" onclick="cancelOrder(${o.order_id})">取消</a>`;
-  if (o.refund_amount > 0) itemsTxt;
   return `<tr>
-    <td>${o.order_no}<br><span class="muted">${o.channel}</span></td>
-    <td>${o.customer_name}<br><span class="muted">${o.phone}</span></td>
-    <td>${itemsTxt}</td>
-    <td>${money(total)}</td>
+    <td>${esc(o.order_no)}<br><span class="muted">${esc(o.channel)}</span></td>
+    <td>${esc(o.customer_name)}<br><span class="muted">${esc(o.phone)}</span></td>
+    <td>${itemsTxt}</td><td>${money(total)}</td>
     <td>${money(o.paid)}${o.refund_amount>0?`<br><span class="muted" style="color:#c62828">應退 ${money(o.refund_amount)}</span>`:''}</td>
-    <td>${statusBadge(o.status)}${o.cancel_reason?`<br><span class="muted">${o.cancel_reason}</span>`:''}</td>
-    <td style="font-size:13px">${ops}</td>
-  </tr>`;
+    <td>${statusBadge(o.status)}${o.cancel_reason?`<br><span class="muted">${esc(o.cancel_reason)}</span>`:''}</td>
+    <td style="font-size:13px">${ops}</td></tr>`;
 }
 
-window.pay = async (id, type, amount) => {
+window.openOrderForm = async (tour_id) => {
+  const box = $('#order-form');
+  if (!box.classList.contains('hide')) { box.classList.add('hide'); return; }
+  const d = await api('/api/tours/'+tour_id);
+  const rows = d.prices.map(p => `
+    <div class="pax-row"><span>${esc(p.name)} <span class="muted">${money(p.price)}</span></span>
+      <input type="number" min="0" value="0" data-pt="${p.passenger_type_id}" data-price="${p.price}" oninput="calcOrderTotal()"></div>`).join('');
+  box.innerHTML = `
+    <div class="grid2">
+      <div><label>聯絡人姓名 *</label><input id="o-name" placeholder="王小明"></div>
+      <div><label>聯絡電話</label><input id="o-phone" placeholder="0912345678"></div>
+      <div><label>Email</label><input id="o-email" placeholder="(選填)"></div>
+      <div><label>通路來源</label><select id="o-channel"><option>櫃台</option><option>官網</option><option>業務</option><option>同業</option></select></div>
+    </div>
+    <label style="margin-top:12px">旅客人數</label>${rows}
+    <div style="text-align:right;margin:8px 0">預估總額:<b id="o-total">NT$0</b></div>
+    <button class="btn" onclick="submitOrder(${tour_id})">建立訂單(扣庫存)</button>
+    <button class="btn ghost" onclick="openOrderForm(${tour_id})">取消</button>
+    <p class="muted" style="margin-top:6px">建立後狀態為「待付訂金」,收訂金後轉「已確認」。</p>`;
+  box.classList.remove('hide');
+};
+window.calcOrderTotal = () => {
+  let sum = 0; document.querySelectorAll('#order-form [data-pt]').forEach(i => sum += (+i.value||0)*(+i.dataset.price));
+  $('#o-total').textContent = money(sum);
+};
+window.submitOrder = async (tour_id) => {
+  const name = $('#o-name').value.trim();
+  if (!name) return toast('請填寫聯絡人姓名', true);
+  const items = [];
+  document.querySelectorAll('#order-form [data-pt]').forEach(i => { const q=+i.value||0; if(q>0) items.push({passenger_type_id:+i.dataset.pt, qty:q}); });
+  if (!items.length) return toast('請至少選擇一位旅客', true);
   try {
-    await api(`/api/orders/${id}/pay`, 'POST', { payment_type: type, amount, method: '信用卡' });
-    toast(`已收${type} ${money(amount)}`);
-    viewAdminTour(state.curTour);
+    const r = await api('/api/orders', 'POST', {
+      tour_id, channel: $('#o-channel').value,
+      customer: { name, phone: $('#o-phone').value.trim(), email: $('#o-email').value.trim() }, items
+    });
+    toast(`訂單已建立:${r.order_no}`); viewTour(tour_id);
+  } catch (e) { toast(e.message, true); }
+};
+
+window.pay = async (id, type, amount) => {
+  try { await api(`/api/orders/${id}/pay`, 'POST', { payment_type: type, amount, method: '信用卡' });
+    toast(`已收${type} ${money(amount)}`); state.curOrder ? viewOrder(id) : viewTour(state.curTour);
   } catch (e) { toast(e.message, true); }
 };
 window.cancelOrder = async (id) => {
   if (!confirm('確定取消此訂單?庫存將歸還。')) return;
-  try {
-    const r = await api(`/api/orders/${id}/cancel`, 'POST', { reason: '客取消' });
-    toast('已取消,庫存已歸還' + (r.refund?`,應退款 ${money(r.refund)}`:''));
-    viewAdminTour(state.curTour);
+  try { const r = await api(`/api/orders/${id}/cancel`, 'POST', { reason: '客取消' });
+    toast('已取消,庫存已歸還' + (r.refund?`,應退款 ${money(r.refund)}`:'')); viewTour(state.curTour);
   } catch (e) { toast(e.message, true); }
 };
-window.expireNow = async (id) => {
-  await api(`/api/orders/${id}/expire-now`, 'POST');
-  toast('已將佔位設為過期,觸發排程或點「釋放逾期」即回收');
-};
 
+// ═══════════════ 訂單詳情(旅客步驟7、契約步驟9、收款步驟10)═══════════════
 window.viewOrder = async (id) => {
+  state.curOrder = id;
   const o = await api('/api/orders/'+id);
+  const ptOptions = META.passenger_types.map(p=>`<option value="${p.passenger_type_id}">${esc(p.name)}</option>`).join('');
   $('#app').innerHTML = `
-    <a class="link" onclick="viewAdminTour(${o.tour_id})">← 返回團控</a>
+    <a class="link" onclick="state.curOrder=null;viewTour(${o.tour_id})">← 返回團控</a>
     <div class="card" style="margin-top:12px">
-      <h2>訂單 ${o.order_no} ${statusBadge(o.status)}</h2>
+      <h2>訂單 ${esc(o.order_no)} ${statusBadge(o.status)}</h2>
       <div class="row">
         <div class="col">
-          <div class="kv"><b>行程/團號</b>${o.product_name} · ${o.tour_code}</div>
-          <div class="kv"><b>聯絡人</b>${o.customer_name}(${o.phone})</div>
-          <div class="kv"><b>通路</b>${o.channel}</div>
-          <div class="kv"><b>建立時間</b>${(o.created_at||'').replace('T',' ')}</div>
-          ${o.hold_expire_at?`<div class="kv"><b>佔位到期</b>${o.hold_expire_at.replace('T',' ')}</div>`:''}
-          ${o.cancel_reason?`<div class="kv"><b>取消原因</b>${o.cancel_reason}</div>`:''}
+          <div class="kv"><b>行程/團號</b>${esc(o.product_name)} · ${esc(o.tour_code)}</div>
+          <div class="kv"><b>聯絡人</b>${esc(o.customer_name)}(${esc(o.phone)})</div>
+          <div class="kv"><b>通路</b>${esc(o.channel)}</div>
+          ${o.cancel_reason?`<div class="kv"><b>取消原因</b>${esc(o.cancel_reason)}</div>`:''}
           ${o.refund_amount>0?`<div class="kv"><b>應退款</b>${money(o.refund_amount)}</div>`:''}
         </div>
         <div class="col">
@@ -327,39 +340,84 @@ window.viewOrder = async (id) => {
         </div>
       </div>
     </div>
+
     <div class="card"><h2>成交價格(訂單明細)</h2>
       <table><thead><tr><th>旅客類型</th><th>人數</th><th>單價</th><th>小計</th></tr></thead><tbody>
-      ${o.items.map(i=>`<tr><td>${i.pt_name}</td><td>${i.qty}</td><td>${money(i.agreed_unit_price)}</td><td>${money(i.final_amount)}</td></tr>`).join('')}
+      ${o.items.map(i=>`<tr><td>${esc(i.pt_name)}</td><td>${i.qty}</td><td>${money(i.agreed_unit_price)}</td><td>${money(i.final_amount)}</td></tr>`).join('')}
       </tbody></table>
     </div>
-    <div class="card"><h2>收款紀錄</h2>
-      ${o.payments.length?`<table><thead><tr><th>類型</th><th>金額</th><th>方式</th><th>時間</th></tr></thead><tbody>
-      ${o.payments.map(p=>`<tr><td>${p.payment_type}</td><td>${money(p.amount)}</td><td>${p.method}</td><td>${(p.paid_at||'').replace('T',' ')}</td></tr>`).join('')}
-      </tbody></table>`:'<p class="muted">尚無收款</p>'}
+
+    <div class="card"><h2>旅客資料(${o.travelers.length} 人) <button class="btn sm" onclick="toggleTravelerForm()">＋ 新增旅客</button></h2>
+      <p class="steps">步驟7:登記實際出團的人(訂單明細只知幾大幾小,旅客表才知道是誰)</p>
+      <div id="traveler-form" class="formbox hide">
+        <div class="grid2">
+          <div><label>中文姓名 *</label><input id="tv-name" placeholder="王太太"></div>
+          <div><label>旅客類型</label><select id="tv-pt">${ptOptions}</select></div>
+          <div><label>身分證字號</label><input id="tv-id" placeholder="A123456789"></div>
+          <div><label>生日</label><input id="tv-birthday" type="date"></div>
+          <div><label>性別</label><select id="tv-gender"><option>男</option><option>女</option></select></div>
+          <div><label>英文姓名</label><input id="tv-eng" placeholder="(國外團用)"></div>
+        </div>
+        <div style="margin-top:12px"><button class="btn" onclick="submitTraveler(${o.order_id})">新增旅客</button>
+          <button class="btn ghost" onclick="toggleTravelerForm()">取消</button></div>
+      </div>
+      <table style="margin-top:12px"><thead><tr><th>姓名</th><th>類型</th><th>身分證</th><th>生日</th><th>性別</th></tr></thead><tbody>
+      ${o.travelers.map(t=>`<tr><td>${esc(t.name)} <span class="muted">${esc(t.english_name)}</span></td>
+        <td>${esc(ptName(t.passenger_type_id))}</td><td>${esc(t.id_no)}</td><td>${esc(t.birthday)}</td><td>${esc(t.gender)}</td></tr>`).join('')
+        || '<tr><td colspan=5 class="muted">尚未登記旅客</td></tr>'}
+      </tbody></table>
     </div>
+
     <div class="card"><h2>契約</h2>
-      ${o.contract?`<div class="kv"><b>契約編號</b>${o.contract.contract_no}</div>
-        <div class="kv"><b>簽署狀態</b>${o.contract.signed_status}</div>
-        <div class="kv"><b>簽署人</b>${o.contract.signer_name||'-'}</div>`
-      :`<p class="muted">尚未簽署契約</p>
-        <button class="btn sm" onclick="signC(${o.order_id},'${o.customer_name}')">產生並簽署報名契約</button>`}
+      <p class="steps">步驟9:這張訂單簽的旅遊契約</p>
+      ${o.contract?`<div class="kv"><b>契約編號</b>${esc(o.contract.contract_no)}</div>
+        <div class="kv"><b>簽署狀態</b>${esc(o.contract.signed_status)}</div>
+        <div class="kv"><b>簽署人</b>${esc(o.contract.signer_name||'-')}</div>
+        <div class="kv"><b>簽署時間</b>${(o.contract.signed_at||'').replace('T',' ')}</div>`
+      :`<p class="muted">尚未簽署契約</p><button class="btn sm" onclick="signC(${o.order_id})">產生並簽署報名契約</button>`}
+    </div>
+
+    <div class="card"><h2>收款紀錄</h2>
+      <p class="steps">步驟10:訂金、尾款</p>
+      ${o.payments.length?`<table><thead><tr><th>類型</th><th>金額</th><th>方式</th><th>時間</th></tr></thead><tbody>
+      ${o.payments.map(p=>`<tr><td>${esc(p.payment_type)}</td><td>${money(p.amount)}</td><td>${esc(p.method)}</td><td>${(p.paid_at||'').replace('T',' ')}</td></tr>`).join('')}
+      </tbody></table>`:'<p class="muted">尚無收款</p>'}
+      <div style="margin-top:10px">
+        ${o.status==='待付訂金'?`<button class="btn sm" onclick="pay(${o.order_id},'訂金',${Math.round(o.total*0.3)})">收訂金(${money(Math.round(o.total*0.3))})</button>`:''}
+        ${o.status==='已確認'&&o.paid<o.total?`<button class="btn sm" onclick="pay(${o.order_id},'尾款',${o.total-o.paid})">收尾款(${money(o.total-o.paid)})</button>`:''}
+      </div>
     </div>`;
 };
-window.signC = async (id, name) => {
+function ptName(id){ const p = META.passenger_types.find(x=>x.passenger_type_id===id); return p?p.name:''; }
+window.toggleTravelerForm = () => $('#traveler-form').classList.toggle('hide');
+window.submitTraveler = async (order_id) => {
+  const name = $('#tv-name').value.trim();
+  if (!name) return toast('請填寫旅客姓名', true);
+  try {
+    await api(`/api/orders/${order_id}/travelers`, 'POST', {
+      passenger_type_id: +$('#tv-pt').value, name, english_name: $('#tv-eng').value.trim(),
+      id_no: $('#tv-id').value.trim(), birthday: $('#tv-birthday').value, gender: $('#tv-gender').value
+    });
+    toast('旅客已新增'); viewOrder(order_id);
+  } catch (e) { toast(e.message, true); }
+};
+window.signC = async (id) => {
   const tpl = META.contract_templates[0];
   if (!tpl) return toast('無可用契約範本', true);
-  await api(`/api/orders/${id}/sign`, 'POST', { contract_template_id: tpl.contract_template_id, signer_name: name });
-  toast('契約已簽署'); viewOrder(id);
+  const o = await api('/api/orders/'+id);
+  try { await api(`/api/orders/${id}/sign`, 'POST', { contract_template_id: tpl.contract_template_id, signer_name: o.customer_name });
+    toast('契約已簽署'); viewOrder(id);
+  } catch (e) { toast(e.message, true); }
 };
 
-// ───────── 導覽 ─────────
+// ═══════════════ 導覽 ═══════════════
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.remove('active'));
-  b.classList.add('active'); state.view = b.dataset.view; state.curTour = null;
-  b.dataset.view === 'front' ? renderFront() : renderAdmin();
+  b.classList.add('active'); state.view = b.dataset.view; state.curTour = null; state.curOrder = null;
+  b.dataset.view === 'products' ? renderProducts() : renderTours();
 });
 
-(async () => { META = await api('/api/meta'); renderFront(); })();
+(async () => { META = await api('/api/meta'); renderTours(); })();
 </script>
 </body>
 </html>

@@ -90,8 +90,19 @@ function orderDetail(order_id) {
 function passengerTypes() {
   return db.prepare('SELECT * FROM passenger_type WHERE status=? ORDER BY passenger_type_id').all('啟用');
 }
+function resourceTypes() {
+  return db.prepare('SELECT * FROM resource_type WHERE status=? ORDER BY resource_type_id').all('啟用');
+}
 function contractTemplates() {
   return db.prepare('SELECT contract_template_id, template_name, contract_version FROM contract_template WHERE is_active=1').all();
+}
+function listProducts() {
+  const rows = db.prepare('SELECT * FROM product ORDER BY product_id').all();
+  // 附上每個商品已開幾團
+  for (const r of rows) {
+    r.tour_count = db.prepare('SELECT COUNT(*) AS c FROM tour WHERE product_id=?').get(r.product_id).c;
+  }
+  return rows;
 }
 
 // ───── 路由 ─────
@@ -130,9 +141,11 @@ async function handleApi(req, res, url) {
   try {
     // GET /api/tours
     if (req.method === 'GET' && p === '/api/tours') return json(res, 200, listTours());
-    // GET /api/meta(旅客類型、契約範本)
+    // GET /api/meta(旅客類型、資源類型、契約範本)
     if (req.method === 'GET' && p === '/api/meta')
-      return json(res, 200, { passenger_types: passengerTypes(), contract_templates: contractTemplates() });
+      return json(res, 200, { passenger_types: passengerTypes(), resource_types: resourceTypes(), contract_templates: contractTemplates() });
+    // GET /api/products(商品列表)
+    if (req.method === 'GET' && p === '/api/products') return json(res, 200, listProducts());
     // GET /api/tours/:id
     if (req.method === 'GET' && seg[1] === 'tours' && seg[2]) {
       const d = tourDetail(Number(seg[2]));
@@ -149,10 +162,29 @@ async function handleApi(req, res, url) {
       return d ? json(res, 200, d) : json(res, 404, { error: '訂單不存在' });
     }
 
+    // POST /api/products  建立商品(步驟1)
+    if (req.method === 'POST' && p === '/api/products') {
+      const body = await readBody(req);
+      const r = F.createProduct(db, body);
+      return json(res, 200, { ok: true, ...r });
+    }
+    // POST /api/tours  開團 + 設庫存 + 設售價(步驟2~4)
+    if (req.method === 'POST' && p === '/api/tours') {
+      const body = await readBody(req);
+      const r = F.createTour(db, body);
+      return json(res, 200, { ok: true, ...r });
+    }
+
     // POST /api/orders  建立訂單(流程A/B)
     if (req.method === 'POST' && p === '/api/orders') {
       const body = await readBody(req);
       const r = F.createOrder(db, body);
+      return json(res, 200, { ok: true, ...r });
+    }
+    // POST /api/orders/:id/travelers  新增旅客(步驟7)
+    if (req.method === 'POST' && seg[1] === 'orders' && seg[3] === 'travelers') {
+      const body = await readBody(req);
+      const r = F.addTraveler(db, { order_id: Number(seg[2]), ...body });
       return json(res, 200, { ok: true, ...r });
     }
     // POST /api/orders/:id/pay  收款(流程B)

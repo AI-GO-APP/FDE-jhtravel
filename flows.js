@@ -191,10 +191,10 @@ function _cancelOrderInTx(db, order_id, reason) {
   ).get(order_id).s;
   const refund = paid; // 第一階段:已收款全額列為應退款(實際退費規則後補)
 
-  // 步驟5:狀態 → 取消(逾期用「逾期取消」以利對帳),記 cancel_reason
+  // 步驟5:狀態 → 取消(逾期用「逾期取消」以利對帳),記 cancel_reason + cancelled_at
   const newStatus = reason === '逾期' ? '逾期取消' : '取消';
-  db.prepare('UPDATE "order" SET status=?, cancel_reason=?, refund_amount=? WHERE order_id=?')
-    .run(newStatus, reason, refund, order_id);
+  db.prepare('UPDATE "order" SET status=?, cancel_reason=?, refund_amount=?, cancelled_at=? WHERE order_id=?')
+    .run(newStatus, reason, refund, NOW(), order_id);
 
   return { skipped: false, tour_id: order.tour_id, refund };
 }
@@ -320,6 +320,75 @@ function signContract(db, { order_id, contract_template_id, signer_name }) {
 }
 
 // ───────────────────────────────────────────────────────────
+// 後台操作:建立商品(步驟1)
+// ───────────────────────────────────────────────────────────
+function createProduct(db, { product_code, name, region_type, days }) {
+  if (!name) throw new BusinessError('請填寫行程名稱');
+  const r = db.prepare(
+    'INSERT INTO product (product_code,name,region_type,days,status,created_at) VALUES (?,?,?,?,?,?)'
+  ).run(product_code || '', name, region_type || '國內', Number(days) || 1, '上架', NOW());
+  return { product_id: Number(r.lastInsertRowid) };
+}
+
+// ───────────────────────────────────────────────────────────
+// 後台操作:開團(步驟2~4)— 建立 tour + 庫存 + 售價(同一交易)
+// inventory: [{resource_type_id, total_qty}]
+// prices:    [{passenger_type_id, price, deposit_ratio}]
+// ───────────────────────────────────────────────────────────
+function createTour(db, { product_id, tour_code, start_date, end_date, min_pax, signup_deadline, inventory, prices }) {
+  if (!product_id) throw new BusinessError('請選擇商品');
+  if (!tour_code) throw new BusinessError('請填寫團號');
+  if (!start_date) throw new BusinessError('請填寫出發日期');
+
+  return tx(db, () => {
+    const prod = db.prepare('SELECT * FROM product WHERE product_id=?').get(product_id);
+    if (!prod) throw new BusinessError('商品不存在');
+
+    const r = db.prepare(
+      `INSERT INTO tour (tour_code,product_id,start_date,end_date,min_pax,signup_deadline,status,manual_group_status,confirmed_at,created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`
+    ).run(tour_code, product_id, start_date, end_date || start_date, Number(min_pax) || 0,
+          signup_deadline || start_date, '報名中', '待定', null, NOW());
+    const tour_id = Number(r.lastInsertRowid);
+
+    const invStmt = db.prepare(
+      'INSERT INTO tour_inventory (tour_id,resource_type_id,total_qty,used_qty) VALUES (?,?,?,0)'
+    );
+    for (const i of (inventory || [])) {
+      if (i.total_qty != null && Number(i.total_qty) > 0) {
+        invStmt.run(tour_id, i.resource_type_id, Number(i.total_qty));
+      }
+    }
+
+    const priceStmt = db.prepare(
+      'INSERT INTO tour_price (tour_id,passenger_type_id,price,deposit_ratio,created_at) VALUES (?,?,?,?,?)'
+    );
+    for (const p of (prices || [])) {
+      if (p.price != null && Number(p.price) > 0) {
+        priceStmt.run(tour_id, p.passenger_type_id, Number(p.price), p.deposit_ratio != null ? Number(p.deposit_ratio) : 0.3, NOW());
+      }
+    }
+
+    return { tour_id, tour_code };
+  });
+}
+
+// ───────────────────────────────────────────────────────────
+// 後台操作:新增旅客(步驟7)— 為訂單登記實際出團的人
+// ───────────────────────────────────────────────────────────
+function addTraveler(db, { order_id, passenger_type_id, name, english_name, birthday, gender, nationality, id_no, passport_no, passport_expire_date }) {
+  const order = db.prepare('SELECT order_id FROM "order" WHERE order_id=?').get(order_id);
+  if (!order) throw new BusinessError('訂單不存在');
+  if (!name) throw new BusinessError('請填寫旅客姓名');
+  const r = db.prepare(
+    `INSERT INTO traveler (order_id,passenger_type_id,name,english_name,birthday,gender,nationality,id_no,passport_no,passport_expire_date)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`
+  ).run(order_id, passenger_type_id || null, name, english_name || '', birthday || '', gender || '',
+        nationality || '台灣', id_no || '', passport_no || '', passport_expire_date || '');
+  return { traveler_id: Number(r.lastInsertRowid) };
+}
+
+// ───────────────────────────────────────────────────────────
 // 工具
 // ───────────────────────────────────────────────────────────
 function addHours(iso, h) {
@@ -346,4 +415,7 @@ module.exports = {
   releaseExpiredHolds,
   checkDeadlines,
   signContract,
+  createProduct,
+  createTour,
+  addTraveler,
 };

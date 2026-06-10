@@ -89,8 +89,9 @@ function createSchema(db) {
     end_date         TEXT,
     min_pax          INTEGER,   -- 成團門檻
     signup_deadline  TEXT,      -- 報名截止日(V1.1 流程D 不成團判定)
-    status           TEXT,      -- 報名中 / 已成團 / 不成團取消
-    confirmed_at     TEXT,      -- V1.1 新增:成團時間
+    status           TEXT,      -- 草稿 / 報名中 / 已成團 / 不成團取消 / 關閉
+    manual_group_status TEXT,   -- 人工成團狀態:主管手動決定(待定 / 強制成團 / 強制不成團)
+    confirmed_at     TEXT,      -- 成團時間
     created_at       TEXT
   );
 
@@ -107,6 +108,7 @@ function createSchema(db) {
     passenger_type_id  INTEGER,
     price              INTEGER,
     deposit_ratio      REAL,    -- 訂金比例 0~1
+    created_at         TEXT,
     PRIMARY KEY (tour_id, passenger_type_id)
   );
 
@@ -121,7 +123,8 @@ function createSchema(db) {
     hold_expire_at  TEXT,       -- V1.1 新增:佔位到期時間
     cancel_reason   TEXT,       -- V1.1 新增:客取消 / 逾期 / 不成團
     refund_amount   INTEGER,    -- V1.1 新增:應退款金額(第一階段先記)
-    created_at      TEXT
+    created_at      TEXT,
+    cancelled_at    TEXT        -- 取消時間
   );
 
   CREATE TABLE order_item (
@@ -144,6 +147,7 @@ function createSchema(db) {
     birthday             TEXT,
     gender               TEXT,
     nationality          TEXT,
+    id_no                TEXT,    -- 身分證字號(國內團用)
     passport_no          TEXT,
     passport_expire_date TEXT
   );
@@ -208,110 +212,83 @@ function seed(db) {
   // 嬰兒:車位0 床位0 機位0(膝上,不佔資源)
   cr.run(4, 1, 0); cr.run(4, 2, 0); cr.run(4, 3, 0);
 
-  // --- 商品 ---
+  // ============================================================
+  // 種子資料:照「資料庫總覽」的故事 — 王小明報名花蓮三日遊(步驟 1~10)
+  // ============================================================
+
+  // 步驟1. 商品(product)
   const pd = db.prepare(
     'INSERT INTO product (product_id,product_code,name,region_type,days,status,created_at) VALUES (?,?,?,?,?,?,?)'
   );
-  pd.run(1, 'HL2', '花蓮二日遊', '國內', 2, '上架', now);
-  pd.run(2, 'HOK5', '北海道五日遊', '國外', 5, '上架', now);
+  pd.run(1, 'HUA3D', '花蓮三日遊', '國內', 3, '上架', now);   // ← 故事主角
+  pd.run(2, 'HOK5', '北海道五日遊', '國外', 5, '上架', now);   // 另一個商品,讓「開團」有選擇
 
-  // --- 契約範本 ---
+  // 契約範本
   db.prepare(
     'INSERT INTO contract_template (contract_template_id,template_code,template_name,contract_type,contract_version,content,is_active,created_at) VALUES (?,?,?,?,?,?,?,?)'
-  ).run(1, 'STD', '國內旅遊定型化契約', '國內', 'v2024', '本契約依交通部觀光署定型化契約範本…', 1, now);
+  ).run(1, 'DOMESTIC', '國內旅遊定型化契約', '國內', 'V1', '本契約依交通部觀光署國內旅遊定型化契約範本…', 1, now);
 
-  // --- 團期 ---
+  // 步驟2. 團期(tour)— 花蓮三日遊,2026/07/01 出發
   const tr = db.prepare(
-    'INSERT INTO tour (tour_id,tour_code,product_id,start_date,end_date,min_pax,signup_deadline,status,confirmed_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)'
+    'INSERT INTO tour (tour_id,tour_code,product_id,start_date,end_date,min_pax,signup_deadline,status,manual_group_status,confirmed_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
   );
-  // 團1:小庫存,方便展示「防超賣」(車位只有 8);報名中、接近成團(5/6)
-  tr.run(1, 'HL2-0701', 1, '2026-07-01', '2026-07-02', 6, '2026-06-25', '報名中', null, now);
-  // 團2:北海道,較大團;範例設為「已成團」(12/10)
-  tr.run(2, 'HOK5-0810', 2, '2026-08-10', '2026-08-14', 10, '2026-07-20', '已成團', '2026-05-30T16:20:00', now);
-  // 團3:報名中、剛開團(日期設在未來,避免被排程判成不成團)
-  tr.run(3, 'HL2-0905', 1, '2026-09-05', '2026-09-06', 8, '2026-08-20', '報名中', null, now);
+  tr.run(1, 'HUA3D260701A', 1, '2026-07-01', '2026-07-03', 16, '2026-06-25', '報名中', '待定', null, now);
+  // 第二團(北海道,空團,讓後台列表不只一筆、也可示範開團結果)
+  tr.run(2, 'HOK5260810A', 2, '2026-08-10', '2026-08-14', 10, '2026-07-20', '報名中', '待定', null, now);
 
-  // --- 庫存 ---
+  // 步驟3. 庫存(tour_inventory)— 車位42、床位40
   const iv = db.prepare(
     'INSERT INTO tour_inventory (tour_id,resource_type_id,total_qty,used_qty) VALUES (?,?,?,?)'
   );
-  // used_qty 已對應下方範例訂單扣掉的量(團1 用6、團2 用14、團3 用2)
-  // 團1:車位8、床位8(國內無機位)
-  iv.run(1, 1, 8, 6); iv.run(1, 2, 8, 6);
-  // 團2:車位20、床位20、機位20
-  iv.run(2, 1, 20, 14); iv.run(2, 2, 20, 14); iv.run(2, 3, 20, 14);
-  // 團3:車位16、床位16
-  iv.run(3, 1, 16, 2); iv.run(3, 2, 16, 2);
+  // 花蓮三日:車位42、床位40;used 已對應王小明訂單(2大1小 → 車位3、床位3)
+  iv.run(1, 1, 42, 3); iv.run(1, 2, 40, 3);
+  // 北海道:車位30、床位30、機位30(尚無訂單)
+  iv.run(2, 1, 30, 0); iv.run(2, 2, 30, 0); iv.run(2, 3, 30, 0);
 
-  // --- 售價 ---
+  // 步驟4. 售價(tour_price)— 大人30,000、小孩28,000
   const tp = db.prepare(
-    'INSERT INTO tour_price (tour_id,passenger_type_id,price,deposit_ratio) VALUES (?,?,?,?)'
+    'INSERT INTO tour_price (tour_id,passenger_type_id,price,deposit_ratio,created_at) VALUES (?,?,?,?,?)'
   );
-  // 團1 花蓮二日
-  tp.run(1, 1, 4500, 0.3); tp.run(1, 2, 3800, 0.3); tp.run(1, 3, 3200, 0.3); tp.run(1, 4, 800, 0.3);
-  // 團2 北海道五日
-  tp.run(2, 1, 38900, 0.3); tp.run(2, 2, 35900, 0.3); tp.run(2, 3, 30900, 0.3); tp.run(2, 4, 6000, 0.3);
-  // 團3 花蓮二日
-  tp.run(3, 1, 4500, 0.3); tp.run(3, 2, 3800, 0.3); tp.run(3, 3, 3200, 0.3); tp.run(3, 4, 800, 0.3);
+  tp.run(1, 1, 30000, 0.3, now); tp.run(1, 2, 28000, 0.3, now); tp.run(1, 3, 26000, 0.3, now); tp.run(1, 4, 5000, 0.3, now);
+  tp.run(2, 1, 42000, 0.3, now); tp.run(2, 2, 39000, 0.3, now); tp.run(2, 3, 36000, 0.3, now); tp.run(2, 4, 8000, 0.3, now);
 
-  // ===== 範例訂單資料(讓 demo 一開啟就有內容;每次重建都會長回來)=====
-  // 待付訂金的佔位到期設在 30 天後,demo 期間不會被排程自動釋放
-  const future = new Date();
-  future.setDate(future.getDate() + 30);
-  const holdFuture = future.toISOString().slice(0, 19);
-
-  const cust = db.prepare(
+  // 步驟5. 客戶(customer)+ 訂單(order)— 王小明報名 HUA3D260701A
+  db.prepare(
     'INSERT INTO customer (customer_id,name,phone,email,line_id,note,created_at) VALUES (?,?,?,?,?,?,?)'
-  );
-  cust.run(1, '王曉明', '0911222333', 'wang@example.com', '', '', now);
-  cust.run(2, '陳美玲', '0922333444', 'chen@example.com', '', '', now);
-  cust.run(3, '林大華', '0933444555', '', '', '電話詢問', now);
-  cust.run(4, '永盛旅行社', '02-27001234', 'sales@yongsheng.com', 'yongsheng', '同業合作', now);
-  cust.run(5, '黃淑芬', '0955666777', 'huang@example.com', '', '', now);
-  cust.run(6, '周建宏', '0966777888', '', '', '', now);
-  cust.run(7, '吳佩珊', '0977888999', 'wu@example.com', '', '', now);
+  ).run(1, '王小明', '0912345678', 'ming@example.com', 'mingwang', '', now);
 
-  const ord = db.prepare(
-    'INSERT INTO "order" (order_id,order_no,order_type,tour_id,customer_id,channel,status,hold_expire_at,cancel_reason,refund_amount,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)'
-  );
+  db.prepare(
+    'INSERT INTO "order" (order_id,order_no,order_type,tour_id,customer_id,channel,status,hold_expire_at,cancel_reason,refund_amount,created_at,cancelled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
+  ).run(1, 'HUA3D260701A', '一般', 1, 1, '櫃台', '已確認', null, null, 0, '2026-06-05T10:00:00', null);
+
+  // 步驟6. 訂單明細(order_item)— 大人2、小孩1。2×30000 + 1×28000 = 88,000
   const item = db.prepare(
     'INSERT INTO order_item (order_id,passenger_type_id,qty,agreed_unit_price,agreed_subtotal,discount_amount,final_amount) VALUES (?,?,?,?,?,?,?)'
   );
+  item.run(1, 1, 2, 30000, 60000, 0, 60000);   // 大人2位
+  item.run(1, 2, 1, 28000, 28000, 0, 28000);   // 小孩佔床1位
+
+  // 步驟7. 旅客(traveler)— 王小明、王太太、王小華
+  const tv = db.prepare(
+    'INSERT INTO traveler (order_id,passenger_type_id,name,english_name,birthday,gender,nationality,id_no,passport_no,passport_expire_date) VALUES (?,?,?,?,?,?,?,?,?,?)'
+  );
+  tv.run(1, 1, '王小明', 'Wang Hsiao-Ming', '1985-03-12', '男', '台灣', 'A123456789', '', '');
+  tv.run(1, 1, '王太太', 'Wang Mei-Li',     '1987-08-20', '女', '台灣', 'B223456789', '', '');
+  tv.run(1, 2, '王小華', 'Wang Hsiao-Hua',  '2017-05-06', '男', '台灣', 'A123456780', '', '');
+
+  // 步驟8. 庫存扣減已反映在上方 tour_inventory.used_qty(車位3、床位3)
+
+  // 步驟9. 報名契約(member_contract)— 王小明這張訂單簽的契約
+  db.prepare(
+    'INSERT INTO member_contract (member_contract_id,order_id,contract_template_id,contract_version,contract_no,signed_status,signed_at,signer_name,signed_pdf_url,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)'
+  ).run(1, 1, 1, 'V1', 'C-HUA3D260701A', '已簽', '2026-06-05T10:30:00', '王小明', '/contracts/C-HUA3D260701A.pdf', '2026-06-05T10:30:00');
+
+  // 步驟10. 收款(payment)— 訂金20,000、尾款68,000(合計88,000)
   const pay = db.prepare(
     'INSERT INTO payment (order_id,payment_type,amount,method,paid_at,note,created_at) VALUES (?,?,?,?,?,?,?)'
   );
-
-  // 團1(報名中,已確認 5 人 / 門檻 6;另有 1 筆待付訂金)
-  ord.run(1, 'O20260601001', '一般', 1, 1, '官網', '已確認', null, null, 0, '2026-06-01T10:12:00');
-  item.run(1, 1, 2, 4500, 9000, 0, 9000);
-  pay.run(1, '訂金', 2700, '信用卡', '2026-06-01T10:20:00', '', '2026-06-01T10:20:00');
-
-  ord.run(2, 'O20260601002', '一般', 1, 2, '官網', '已確認', null, null, 0, '2026-06-01T14:30:00');
-  item.run(2, 1, 2, 4500, 9000, 0, 9000);
-  item.run(2, 2, 1, 3800, 3800, 0, 3800);
-  pay.run(2, '訂金', 3840, '轉帳', '2026-06-01T15:00:00', '', '2026-06-01T15:00:00');
-
-  ord.run(3, 'O20260603003', '一般', 1, 3, '電話', '待付訂金', holdFuture, null, 0, '2026-06-03T09:05:00');
-  item.run(3, 1, 1, 4500, 4500, 0, 4500);
-
-  // 團2(已成團,已確認 12 人 / 門檻 10;另有 1 筆待付訂金)
-  ord.run(4, 'O20260528004', '同業', 2, 4, '同業', '已確認', null, null, 0, '2026-05-28T11:00:00');
-  item.run(4, 1, 6, 38900, 233400, 0, 233400);
-  pay.run(4, '訂金', 70020, '轉帳', '2026-05-28T11:30:00', '', '2026-05-28T11:30:00');
-  pay.run(4, '尾款', 163380, '轉帳', '2026-06-05T09:00:00', '', '2026-06-05T09:00:00');
-
-  ord.run(5, 'O20260530005', '一般', 2, 5, '官網', '已確認', null, null, 0, '2026-05-30T16:10:00');
-  item.run(5, 1, 4, 38900, 155600, 0, 155600);
-  item.run(5, 2, 2, 35900, 71800, 0, 71800);
-  pay.run(5, '訂金', 68220, '信用卡', '2026-05-30T16:20:00', '', '2026-05-30T16:20:00');
-
-  ord.run(6, 'O20260605006', '一般', 2, 6, '官網', '待付訂金', holdFuture, null, 0, '2026-06-05T20:45:00');
-  item.run(6, 1, 2, 38900, 77800, 0, 77800);
-  item.run(6, 4, 1, 6000, 6000, 0, 6000);
-
-  // 團3(報名中,剛開團;1 筆待付訂金)
-  ord.run(7, 'O20260608007', '一般', 3, 7, '官網', '待付訂金', holdFuture, null, 0, '2026-06-08T13:00:00');
-  item.run(7, 1, 2, 4500, 9000, 0, 9000);
+  pay.run(1, '訂金', 20000, '信用卡', '2026-06-05T10:35:00', '', '2026-06-05T10:35:00');
+  pay.run(1, '尾款', 68000, '匯款',   '2026-06-20T14:00:00', '', '2026-06-20T14:00:00');
 }
 
 module.exports = { openDb, freshDb, DB_PATH };
