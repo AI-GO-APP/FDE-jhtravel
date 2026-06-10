@@ -1,7 +1,11 @@
 name: 部署到 Staging
 
+# inline 版:直接呼叫部署(不依賴 private 的 AI-GO-APP/.github reusable workflow)
+# 用組織層級已開放給本 repo 的 secrets:GH_APP_ID / GH_APP_PRIVATE_KEY / STAGING_HOST / STAGING_SSH_KEY
+# 子網域 = repo 名稱 → https://fde-jhtravel.staging.ai-go.app
+
 on:
-  workflow_dispatch:        # 可在 GitHub Actions 頁面手動觸發
+  workflow_dispatch:        # 可在 Actions 頁面手動觸發
   push:
     branches: [ main ]
     paths-ignore:
@@ -10,7 +14,29 @@ on:
 
 jobs:
   deploy:
-    uses: AI-GO-APP/.github/.github/workflows/staging-deploy.yml@main
-    with:
-      project-name: jhtour    # 網址 → https://jhtour.staging.ai-go.app
-    secrets: inherit
+    name: 部署 ${{ github.event.repository.name }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: staging-deploy-${{ github.event.repository.name }}
+      cancel-in-progress: false
+
+    steps:
+      - name: 產生 GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.GH_APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: 透過 SSH 部署到 Staging VM
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: deploy
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          command_timeout: 20m
+          envs: GITHUB_TOKEN
+          script: /opt/deploy-config/deploy.sh "${{ github.repository_owner }}" "${{ github.event.repository.name }}" "auto"
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
