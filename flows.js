@@ -141,6 +141,13 @@ function payOrder(db, { order_id, payment_type, amount, method }) {
         .run('已確認', order_id);
     }
 
+    // 全額付清(訂金+尾款 ≥ 成交總額)→ 狀態轉「已完成」
+    const total = db.prepare('SELECT COALESCE(SUM(final_amount),0) AS s FROM order_item WHERE order_id=?').get(order_id).s;
+    const paid = db.prepare('SELECT COALESCE(SUM(amount),0) AS s FROM payment WHERE order_id=?').get(order_id).s;
+    if (total > 0 && paid >= total) {
+      db.prepare('UPDATE "order" SET status=?, hold_expire_at=NULL WHERE order_id=?').run('已完成', order_id);
+    }
+
     return { tour_id: order.tour_id };
   });
 }
@@ -210,7 +217,7 @@ function countConfirmedPax(db, tour_id) {
      FROM "order" o
      JOIN order_item oi ON oi.order_id=o.order_id
      JOIN passenger_type pt ON pt.passenger_type_id=oi.passenger_type_id
-     WHERE o.tour_id=? AND o.status='已確認' AND pt.counts_toward_min=1`
+     WHERE o.tour_id=? AND o.status IN ('已確認','已完成') AND pt.counts_toward_min=1`
   ).get(tour_id);
   return row.pax;
 }

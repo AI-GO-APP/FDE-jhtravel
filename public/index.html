@@ -111,7 +111,8 @@ const money = n => 'NT$ '+(n||0).toLocaleString();
 const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const pct = (a,b) => b? Math.min(100,Math.round(a/b*100)) : 0;
 const tourBadge = s => { const m={'報名中':'b-green','已成團':'b-blue','不成團取消':'b-red','草稿':'b-gray','關閉':'b-gray'}; return `<span class="badge ${m[s]||'b-gray'}">${esc(s)}</span>`; };
-const orderBadge = s => { const m={'待付訂金':'b-orange','已確認':'b-blue','取消':'b-gray','逾期取消':'b-gray'}; return `<span class="badge ${m[s]||'b-gray'}">${esc(s)}</span>`; };
+const orderBadge = s => { const m={'待付訂金':'b-orange','已確認':'b-blue','已完成':'b-green','取消':'b-gray','逾期取消':'b-gray'}; return `<span class="badge ${m[s]||'b-gray'}">${esc(s)}</span>`; };
+const isActiveOrder = s => s==='待付訂金'||s==='已確認'||s==='已完成';
 const signBadge = s => `<span class="badge ${s==='已簽'?'b-green':'b-orange'}">${esc(s||'未簽')}</span>`;
 const payBadge = (paid,total) => paid<=0?'<span class="badge b-gray">未收</span>':(paid<total?'<span class="badge b-orange">部分收款</span>':'<span class="badge b-green">已付清</span>');
 
@@ -196,12 +197,17 @@ async function renderProducts(){
         <button class="btn ghost" onclick="toggleProductForm()">取消</button></div>
     </div>
     <div class="card"><table>
-      <tr><th>代碼</th><th>行程名稱</th><th>區域</th><th>天數</th><th>狀態</th><th>已開團數</th></tr>
+      <tr><th>代碼</th><th>行程名稱</th><th>區域</th><th>天數</th><th>狀態</th><th>已開團數</th><th>操作</th></tr>
       ${products.map(p=>`<tr><td>${esc(p.product_code)}</td><td>${esc(p.name)}</td><td>${esc(p.region_type)}</td>
-        <td>${p.days}天</td><td><span class="badge b-green">${esc(p.status)}</span></td>
-        <td>${p.tour_count>0?`<span class="link" onclick="viewProduct(${p.product_id})">${p.tour_count} 團 →</span>`:'0 團'}</td></tr>`).join('')}
+        <td>${p.days}天</td><td><span class="badge ${p.status==='上架'?'b-green':'b-gray'}">${esc(p.status)}</span></td>
+        <td>${p.tour_count>0?`<span class="link" onclick="viewProduct(${p.product_id})">${p.tour_count} 團 →</span>`:'0 團'}</td>
+        <td><button class="btn sm ghost" onclick="toggleProductStatus(${p.product_id},'${p.status==='上架'?'下架':'上架'}')">${p.status==='上架'?'下架':'上架'}</button></td></tr>`).join('')}
     </table></div>`;
 }
+window.toggleProductStatus = async (id, status) => {
+  try{ await api(`/api/products/${id}/status`,'POST',{status}); toast('商品已'+status); renderProducts(); }
+  catch(e){ toast(e.message,true); }
+};
 window.viewProduct = async (id) => {
   setTitle('商品的團期');
   const d = await api(`/api/products/${id}/tours`);
@@ -344,7 +350,7 @@ window.openOrder = async (id) => {
       <div>
         ${o.status==='待付訂金'?`<button class="btn sm" onclick="pay(${o.order_id},'訂金',${Math.round(o.total*0.3)})">收訂金</button>`:''}
         ${o.status==='已確認'&&o.paid<o.total?`<button class="btn sm" onclick="pay(${o.order_id},'尾款',${o.total-o.paid})">收尾款</button>`:''}
-        ${(o.status==='待付訂金'||o.status==='已確認')?`<button class="btn sm danger" onclick="cancelOrder(${o.order_id})">取消訂單</button>`:''}
+        ${isActiveOrder(o.status)?`<button class="btn sm danger" onclick="cancelOrder(${o.order_id})">取消訂單</button>`:''}
       </div></div>
     <div class="grid grid-2">
       <div class="card"><h3>訂單資訊</h3><div class="kv">
@@ -464,9 +470,10 @@ async function renderContracts(){
     </div>
     <div class="grid grid-2">
       <div class="card"><h3>契約範本</h3><table>
-        <tr><th>代碼</th><th>名稱</th><th>類型</th><th>版本</th><th>啟用</th></tr>
+        <tr><th>代碼</th><th>名稱</th><th>類型</th><th>版本</th><th>啟用</th><th>操作</th></tr>
         ${d.templates.map(t=>`<tr><td>${esc(t.template_code)}</td><td>${esc(t.template_name)}</td><td>${esc(t.contract_type)}</td>
-          <td>${esc(t.contract_version)}</td><td><span class="badge ${t.is_active?'b-green':'b-gray'}">${t.is_active?'啟用':'停用'}</span></td></tr>`).join('')}
+          <td>${esc(t.contract_version)}</td><td><span class="badge ${t.is_active?'b-green':'b-gray'}">${t.is_active?'啟用':'停用'}</span></td>
+          <td><button class="btn sm ghost" onclick="toggleTpl(${t.contract_template_id},${t.is_active?0:1})">${t.is_active?'停用':'啟用'}</button></td></tr>`).join('')}
       </table></div>
       <div class="card"><h3>報名契約</h3><table>
         <tr><th>契約編號</th><th>訂單</th><th>版本</th><th>狀態</th></tr>
@@ -475,6 +482,10 @@ async function renderContracts(){
       </table></div>
     </div>`;
 }
+window.toggleTpl = async (id, is_active) => {
+  try{ await api(`/api/contract-templates/${id}/status`,'POST',{is_active}); META = await api('/api/meta'); toast('已更新'); renderContracts(); }
+  catch(e){ toast(e.message,true); }
+};
 window.toggleTplForm = () => $('#tplForm').classList.toggle('hide');
 window.submitTpl = async () => {
   const template_name=$('#ct-name').value.trim(); if(!template_name) return toast('請填寫範本名稱', true);
@@ -518,19 +529,67 @@ window.submitPay = async () => {
 // ═══════════ 設定 ═══════════
 async function renderSettings(){
   const s = await api('/api/settings');
-  const head = `<tr><th>旅客類型</th>${s.resources.map(r=>`<th>${esc(r)}</th>`).join('')}<th>計入成團</th></tr>`;
-  const rows = s.matrix.map(m=>`<tr><td>${esc(m.passenger_type)}</td>${m.cells.map(c=>`<td>${c.qty}</td>`).join('')}<td>${m.counts_toward_min?'是':'否'}</td></tr>`).join('');
+  // 消耗規則矩陣(可編輯)
+  const head = `<tr><th>旅客類型</th>${s.resource_types.map(r=>`<th>${esc(r.name)}</th>`).join('')}<th>計入成團</th></tr>`;
+  const rows = s.passenger_types.map(pt=>`<tr><td>${esc(pt.name)}</td>${s.resource_types.map(rt=>{
+      const q = s.rules[`${pt.passenger_type_id}_${rt.resource_type_id}`] ?? 0;
+      return `<td><input class="qty" style="width:64px" type="number" min="0" value="${q}" data-pt="${pt.passenger_type_id}" data-rt="${rt.resource_type_id}"></td>`;
+    }).join('')}<td>${pt.counts_toward_min?'是':'否'}</td></tr>`).join('');
   C().innerHTML = `
     <div class="section-title"><h2>設定</h2></div>
-    <div class="grid grid-2">
-      <div class="card"><h3>旅客資源消耗規則</h3><table>${head}${rows}</table>
-        <div class="muted" style="margin-top:8px">報名時系統依此規則自動扣對應資源(車位/床位/機位)</div></div>
-      <div class="card"><h3>成本科目</h3><table>
-        <tr><th>科目</th><th>是否代收轉付</th><th>狀態</th></tr>
-        ${s.cost_categories.map(c=>`<tr><td>${esc(c.name)}</td><td>${c.is_pass_through?'是':'否'}</td><td><span class="badge ${c.status==='啟用'?'b-green':'b-gray'}">${esc(c.status)}</span></td></tr>`).join('')}
+    <div class="card"><h3>旅客資源消耗規則 <button class="btn sm" onclick="saveRules()">儲存規則</button></h3>
+      <table>${head}${rows}</table>
+      <div class="muted" style="margin-top:8px">報名時系統依此規則自動扣對應資源;改完按「儲存規則」生效。</div>
+    </div>
+    <div class="grid grid-2" style="margin-top:16px">
+      <div class="card"><h3>旅客類型</h3><table>
+        <tr><th>名稱</th><th>計入成團</th><th>狀態</th><th>操作</th></tr>
+        ${s.passenger_types.map(p=>`<tr><td>${esc(p.name)}</td><td>${p.counts_toward_min?'是':'否'}</td>
+          <td><span class="badge ${p.status==='啟用'?'b-green':'b-gray'}">${esc(p.status)}</span></td>
+          <td><button class="btn sm ghost" onclick="toggleStatus('passenger-types',${p.passenger_type_id},'${p.status==='啟用'?'停用':'啟用'}')">${p.status==='啟用'?'停用':'啟用'}</button></td></tr>`).join('')}
       </table></div>
+      <div class="card"><h3>資源類型</h3><table>
+        <tr><th>名稱</th><th>狀態</th><th>操作</th></tr>
+        ${s.resource_types.map(r=>`<tr><td>${esc(r.name)}</td>
+          <td><span class="badge ${r.status==='啟用'?'b-green':'b-gray'}">${esc(r.status)}</span></td>
+          <td><button class="btn sm ghost" onclick="toggleStatus('resource-types',${r.resource_type_id},'${r.status==='啟用'?'停用':'啟用'}')">${r.status==='啟用'?'停用':'啟用'}</button></td></tr>`).join('')}
+      </table></div>
+    </div>
+    <div class="card" style="margin-top:16px"><h3>成本科目 <button class="btn sm" onclick="toggleCostForm()">＋ 新增科目</button></h3>
+      <div id="costForm" class="formbox hide">
+        <div class="form">
+          <div class="fld"><label>科目名稱 *</label><input id="cc-name" placeholder="保險"></div>
+          <div class="fld"><label>是否代收轉付</label><select id="cc-pt"><option value="0">否</option><option value="1">是</option></select></div>
+        </div>
+        <div style="margin-top:12px"><button class="btn" onclick="submitCost()">建立</button><button class="btn ghost" onclick="toggleCostForm()">取消</button></div>
+      </div>
+      <table><tr><th>科目</th><th>是否代收轉付</th><th>狀態</th><th>操作</th></tr>
+        ${s.cost_categories.map(c=>`<tr><td>${esc(c.name)}</td><td>${c.is_pass_through?'是':'否'}</td>
+          <td><span class="badge ${c.status==='啟用'?'b-green':'b-gray'}">${esc(c.status)}</span></td>
+          <td><button class="btn sm ghost" onclick='toggleCost(${JSON.stringify(c)})'>${c.status==='啟用'?'停用':'啟用'}</button></td></tr>`).join('')}
+      </table>
     </div>`;
 }
+window.saveRules = async () => {
+  const rules = [...document.querySelectorAll('#content [data-pt][data-rt]')].map(i=>({passenger_type_id:+i.dataset.pt,resource_type_id:+i.dataset.rt,qty:+i.value||0}));
+  try{ await api('/api/consumption-rules','PUT',{rules}); toast('消耗規則已儲存'); }
+  catch(e){ toast(e.message,true); }
+};
+window.toggleStatus = async (kind, id, status) => {
+  try{ await api(`/api/${kind}/${id}/status`,'POST',{status}); META = await api('/api/meta'); toast('已更新'); renderSettings(); }
+  catch(e){ toast(e.message,true); }
+};
+window.toggleCostForm = () => $('#costForm').classList.toggle('hide');
+window.submitCost = async () => {
+  const name=$('#cc-name').value.trim(); if(!name) return toast('請填寫科目名稱', true);
+  try{ await api('/api/cost-categories','POST',{name,is_pass_through:+$('#cc-pt').value}); toast('科目已建立'); renderSettings(); }
+  catch(e){ toast(e.message,true); }
+};
+window.toggleCost = async (c) => {
+  const status = c.status==='啟用'?'停用':'啟用';
+  try{ await api(`/api/cost-categories/${c.cost_category_id}`,'POST',{name:c.name,is_pass_through:c.is_pass_through,status}); toast('已'+status); renderSettings(); }
+  catch(e){ toast(e.message,true); }
+};
 
 // ═══════════ 啟動 ═══════════
 document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>go(b.dataset.page));

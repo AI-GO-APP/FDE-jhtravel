@@ -275,7 +275,7 @@ function seed(db) {
 
   db.prepare(
     'INSERT INTO "order" (order_id,order_no,order_type,tour_id,customer_id,channel,status,hold_expire_at,cancel_reason,refund_amount,created_at,cancelled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
-  ).run(1, 'HUA3D260701A', '一般', 1, 1, '櫃台', '已確認', null, null, 0, '2026-06-05T10:00:00', null);
+  ).run(1, 'HUA3D260701A', '一般', 1, 1, '櫃台', '已完成', null, null, 0, '2026-06-05T10:00:00', null);
 
   // 步驟6. 訂單明細(order_item)— 大人2、小孩1。2×30000 + 1×28000 = 88,000
   const item = db.prepare(

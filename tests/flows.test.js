@@ -94,6 +94,11 @@ async function run() {
   const o1 = (await req('GET', `/api/orders/${orderA1}`)).body;
   check('收訂金後狀態→已確認、清除佔位', o1.status === '已確認' && !o1.hold_expire_at, o1.status);
 
+  // 付清尾款 → 已完成(5大人 @4500 = 22500;訂金6750 + 尾款15750)
+  await req('POST', `/api/orders/${orderA1}/pay`, { payment_type: '尾款', amount: 15750 });
+  const o1full = (await req('GET', `/api/orders/${orderA1}`)).body;
+  check('付清尾款 → 狀態轉「已完成」', o1full.status === '已完成' && o1full.paid === 22500, o1full.status);
+
   await req('POST', `/api/orders/${orderA2}/expire-now`, {});
   const rel = await req('POST', '/api/jobs/release-expired', {});
   check('釋放逾期佔位含該訂單', rel.body.released.includes(orderA2), JSON.stringify(rel.body.released));

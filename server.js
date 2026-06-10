@@ -166,20 +166,15 @@ function listContracts() {
   return { templates, member };
 }
 
-// 設定:消耗規則矩陣 + 成本科目
+// 設定:旅客類型、資源類型、消耗規則、成本科目(皆含 id 與 status,供前端編輯)
 function listSettings() {
-  const pts = db.prepare('SELECT * FROM passenger_type ORDER BY passenger_type_id').all();
-  const ress = db.prepare('SELECT * FROM resource_type ORDER BY resource_type_id').all();
-  const rules = db.prepare('SELECT * FROM consumption_rule').all();
-  const ruleMap = {};
-  for (const r of rules) ruleMap[`${r.passenger_type_id}_${r.resource_type_id}`] = r.qty;
-  const matrix = pts.map(pt => ({
-    passenger_type: pt.name,
-    counts_toward_min: pt.counts_toward_min,
-    cells: ress.map(rt => ({ resource: rt.name, qty: ruleMap[`${pt.passenger_type_id}_${rt.resource_type_id}`] ?? 0 })),
-  }));
+  const passenger_types = db.prepare('SELECT * FROM passenger_type ORDER BY passenger_type_id').all();
+  const resource_types = db.prepare('SELECT * FROM resource_type ORDER BY resource_type_id').all();
+  const rulesRaw = db.prepare('SELECT * FROM consumption_rule').all();
+  const rules = {};
+  for (const r of rulesRaw) rules[`${r.passenger_type_id}_${r.resource_type_id}`] = r.qty;
   const cost_categories = db.prepare('SELECT * FROM cost_category ORDER BY cost_category_id').all();
-  return { resources: ress.map(r => r.name), matrix, cost_categories };
+  return { passenger_types, resource_types, rules, cost_categories };
 }
 
 // ───── 路由 ─────
@@ -281,6 +276,54 @@ async function handleApi(req, res, url) {
       const r = db.prepare('INSERT INTO contract_template (template_code,template_name,contract_type,contract_version,content,is_active,created_at) VALUES (?,?,?,?,?,?,?)')
         .run(b.template_code || '', b.template_name, b.contract_type || '國內', b.contract_version || 'V1', b.content || '', 1, F.NOW());
       return json(res, 200, { ok: true, contract_template_id: Number(r.lastInsertRowid) });
+    }
+
+    // ── 狀態切換 / 設定編輯 ──
+    // POST /api/products/:id/status  上架 / 下架
+    if (req.method === 'POST' && seg[1] === 'products' && seg[3] === 'status') {
+      const b = await readBody(req);
+      db.prepare('UPDATE product SET status=? WHERE product_id=?').run(b.status, Number(seg[2]));
+      return json(res, 200, { ok: true });
+    }
+    // POST /api/passenger-types/:id/status  啟用 / 停用
+    if (req.method === 'POST' && seg[1] === 'passenger-types' && seg[3] === 'status') {
+      const b = await readBody(req);
+      db.prepare('UPDATE passenger_type SET status=? WHERE passenger_type_id=?').run(b.status, Number(seg[2]));
+      return json(res, 200, { ok: true });
+    }
+    // POST /api/resource-types/:id/status  啟用 / 停用
+    if (req.method === 'POST' && seg[1] === 'resource-types' && seg[3] === 'status') {
+      const b = await readBody(req);
+      db.prepare('UPDATE resource_type SET status=? WHERE resource_type_id=?').run(b.status, Number(seg[2]));
+      return json(res, 200, { ok: true });
+    }
+    // POST /api/contract-templates/:id/status  啟用 / 停用
+    if (req.method === 'POST' && seg[1] === 'contract-templates' && seg[3] === 'status') {
+      const b = await readBody(req);
+      db.prepare('UPDATE contract_template SET is_active=? WHERE contract_template_id=?').run(b.is_active ? 1 : 0, Number(seg[2]));
+      return json(res, 200, { ok: true });
+    }
+    // POST /api/cost-categories  新增成本科目
+    if (req.method === 'POST' && p === '/api/cost-categories') {
+      const b = await readBody(req);
+      if (!b.name) return json(res, 400, { error: '請填寫科目名稱' });
+      const r = db.prepare('INSERT INTO cost_category (name,is_pass_through,status) VALUES (?,?,?)')
+        .run(b.name, b.is_pass_through ? 1 : 0, b.status || '啟用');
+      return json(res, 200, { ok: true, cost_category_id: Number(r.lastInsertRowid) });
+    }
+    // POST /api/cost-categories/:id  編輯成本科目(含狀態)
+    if (req.method === 'POST' && seg[1] === 'cost-categories' && seg[2] && !seg[3]) {
+      const b = await readBody(req);
+      db.prepare('UPDATE cost_category SET name=?, is_pass_through=?, status=? WHERE cost_category_id=?')
+        .run(b.name, b.is_pass_through ? 1 : 0, b.status, Number(seg[2]));
+      return json(res, 200, { ok: true });
+    }
+    // PUT /api/consumption-rules  儲存消耗規則(整批 upsert)
+    if (req.method === 'PUT' && p === '/api/consumption-rules') {
+      const b = await readBody(req);
+      const up = db.prepare('INSERT OR REPLACE INTO consumption_rule (passenger_type_id,resource_type_id,qty) VALUES (?,?,?)');
+      for (const r of (b.rules || [])) up.run(r.passenger_type_id, r.resource_type_id, Number(r.qty) || 0);
+      return json(res, 200, { ok: true });
     }
 
     // POST /api/orders  建立訂單(流程A/B)
