@@ -60,7 +60,9 @@ function createOrder(db, { tour_id, customer, channel, order_type, items }) {
   return tx(db, () => {
     const tour = db.prepare('SELECT * FROM tour WHERE tour_id=?').get(tour_id);
     if (!tour) throw new BusinessError('團期不存在');
-    if (tour.status !== '報名中') throw new BusinessError(`此團目前為「${tour.status}」,無法報名`);
+    // 報名中、已成團 都可繼續報名(賣到滿為止);不成團取消/關閉/草稿 則不可
+    if (tour.status !== '報名中' && tour.status !== '已成團')
+      throw new BusinessError(`此團目前為「${tour.status}」,無法報名`);
 
     // 步驟3:算要扣量
     const need = computeConsumption(db, items);
@@ -230,14 +232,15 @@ function _cancelOrderInTx(db, order_id, reason) {
 // 流程 D:成團 / 不成團 自動判定
 // ───────────────────────────────────────────────────────────
 
-// 已成團人數 = Σ order_item.qty(限 counts_toward_min=1 且 訂單為已確認)
+// 成團人數 = Σ order_item.qty(以「報名人數」計:有效訂單=待付訂金/已確認/已完成,
+//            且該旅客類型 counts_toward_min=1,如嬰兒不計入)
 function countConfirmedPax(db, tour_id) {
   const row = db.prepare(
     `SELECT COALESCE(SUM(oi.qty),0) AS pax
      FROM "order" o
      JOIN order_item oi ON oi.order_id=o.order_id
      JOIN passenger_type pt ON pt.passenger_type_id=oi.passenger_type_id
-     WHERE o.tour_id=? AND o.status IN ('已確認','已完成') AND pt.counts_toward_min=1`
+     WHERE o.tour_id=? AND o.status IN ('待付訂金','已確認','已完成') AND pt.counts_toward_min=1`
   ).get(tour_id);
   return row.pax;
 }

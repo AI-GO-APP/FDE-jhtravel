@@ -72,6 +72,8 @@ async function run() {
   const r1 = await req('POST', '/api/orders', { tour_id: tA, channel: '櫃台', customer: { name: '甲', phone: '0900000001' }, items: [{ passenger_type_id: 1, qty: 5 }] });
   check('建立訂單成功(5大人,扣庫存)', r1.status === 200 && r1.body.ok, JSON.stringify(r1.body));
   const orderA1 = r1.body.order_id;
+  const tdA0 = (await req('GET', `/api/tours/${tA}`)).body;
+  check('成團進度以報名人數計(待付訂金也算 → 5)', tdA0.confirmed_pax === 5, `confirmed=${tdA0.confirmed_pax}`);
 
   const r2 = await req('POST', '/api/orders', { tour_id: tA, customer: { name: '乙', phone: '0900000002' }, items: [{ passenger_type_id: 1, qty: 4 }] });
   check('超賣被擋(車位剩3 需4)', r2.status === 400 && /車位僅剩 3/.test(r2.body.error), JSON.stringify(r2.body));
