@@ -341,7 +341,11 @@ async function handleApi(req, res, url) {
       const b = await readBody(req);
       if (!b.name) return json(res, 400, { error: '請填寫資源名稱' });
       const r = db.prepare('INSERT INTO resource_type (name,status) VALUES (?,?)').run(b.name, '啟用');
-      return json(res, 200, { ok: true, resource_type_id: Number(r.lastInsertRowid) });
+      const rtId = Number(r.lastInsertRowid);
+      const pts = db.prepare('SELECT passenger_type_id FROM passenger_type').all();
+      const ins = db.prepare('INSERT OR REPLACE INTO consumption_rule (passenger_type_id,resource_type_id,qty) VALUES (?,?,0)');
+      for (const pt of pts) ins.run(pt.passenger_type_id, rtId);
+      return json(res, 200, { ok: true, resource_type_id: rtId });
     }
     // POST /api/resource-types/:id  編輯資源類型名稱
     if (req.method === 'POST' && seg[1] === 'resource-types' && seg[2] && !seg[3]) {
@@ -349,10 +353,29 @@ async function handleApi(req, res, url) {
       db.prepare('UPDATE resource_type SET name=? WHERE resource_type_id=?').run(b.name, Number(seg[2]));
       return json(res, 200, { ok: true });
     }
-    // POST /api/passenger-types/:id  編輯旅客類型名稱
+    // POST /api/passenger-types  新增旅客類型
+    if (req.method === 'POST' && p === '/api/passenger-types') {
+      const b = await readBody(req);
+      if (!b.name) return json(res, 400, { error: '請填寫旅客類型名稱' });
+      const r = db.prepare('INSERT INTO passenger_type (name,counts_toward_min,status) VALUES (?,?,?)')
+        .run(b.name, b.counts_toward_min ? 1 : 0, '啟用');
+      const ptId = Number(r.lastInsertRowid);
+      // 同步在消耗規則中為各資源建立 0 的規則(讓新類型立即出現在規則表)
+      const ress = db.prepare('SELECT resource_type_id FROM resource_type').all();
+      const ins = db.prepare('INSERT OR REPLACE INTO consumption_rule (passenger_type_id,resource_type_id,qty) VALUES (?,?,0)');
+      for (const rt of ress) ins.run(ptId, rt.resource_type_id);
+      return json(res, 200, { ok: true, passenger_type_id: ptId });
+    }
+    // POST /api/passenger-types/:id  編輯旅客類型(名稱 / 是否計入成團,有給才改)
     if (req.method === 'POST' && seg[1] === 'passenger-types' && seg[2] && !seg[3]) {
       const b = await readBody(req);
-      db.prepare('UPDATE passenger_type SET name=? WHERE passenger_type_id=?').run(b.name, Number(seg[2]));
+      const cur = db.prepare('SELECT * FROM passenger_type WHERE passenger_type_id=?').get(Number(seg[2]));
+      if (!cur) return json(res, 404, { error: '旅客類型不存在' });
+      db.prepare('UPDATE passenger_type SET name=?, counts_toward_min=? WHERE passenger_type_id=?').run(
+        b.name != null ? b.name : cur.name,
+        b.counts_toward_min != null ? (b.counts_toward_min ? 1 : 0) : cur.counts_toward_min,
+        Number(seg[2])
+      );
       return json(res, 200, { ok: true });
     }
     // POST /api/tours/:id  編輯團期(門檻/上限/日期)
