@@ -77,7 +77,7 @@ async function load(){
     <label>手寫簽名</label>
     <canvas id="pad" class="pad"></canvas>
     <div class="padbar"><span class="muted">請在框內以滑鼠或手指簽名</span>
-      <button onclick="clearPad()" style="border:0;border-radius:8px;background:#6b7280;color:#fff;padding:8px 14px;font-weight:700;cursor:pointer">清除</button></div>
+      <button onclick="clearPad()" style="border:0;border-radius:8px;background:#6b7280;color:#fff;padding:8px 14px;font-weight:700;cursor:pointer">清除重簽</button></div>
     <div class="chk"><input type="checkbox" id="agree" onchange="updateSignBtn()"><label for="agree" style="margin:0;font-weight:400">本人已詳閱並同意上述旅遊定型化契約之全部內容。</label></div>
     <button class="btn" id="signBtn" onclick="doSign()" disabled>確認簽署</button>
     <div class="muted" style="margin-top:6px">完成「手寫簽名」並勾選同意後,即可點選確認簽署。</div>`;
