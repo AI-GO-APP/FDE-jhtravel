@@ -544,6 +544,20 @@ window.submitTpl = async () => {
 async function renderPayments(){
   const [pays, orders] = await Promise.all([api('/api/payments'), api('/api/orders')]);
   const payable = orders.filter(o=>o.status==='待付訂金'||o.status==='已確認');
+  // 依訂單歸戶:把每張單的訂金/尾款分開加總(同一筆單可能多次收訂金或尾款)
+  const byOrder = {};
+  pays.forEach(p=>{ const s = byOrder[p.order_id] || (byOrder[p.order_id]={dep:0,fin:0});
+    if(p.payment_type==='訂金') s.dep+=p.amount; else s.fin+=p.amount; });
+  const summary = orders.filter(o=>o.total>0).map(o=>{
+    const s = byOrder[o.order_id] || {dep:0,fin:0};
+    const unpaid = o.total - o.paid;
+    return `<tr>
+      <td><span class="link" onclick="openOrder(${o.order_id})">${esc(o.order_no)}</span></td>
+      <td>${esc(o.customer_name)}</td><td>${esc(o.tour_code)}</td>
+      <td>${money(o.total)}</td><td>${money(s.dep)}</td><td>${money(s.fin)}</td>
+      <td>${money(o.paid)}</td><td>${unpaid>0?`<strong style="color:var(--orange,#c60)">${money(unpaid)}</strong>`:money(0)}</td>
+      <td>${payBadge(o.paid,o.total)}</td></tr>`;
+  }).join('');
   C().innerHTML = `
     <div class="section-title"><h2>收款管理</h2><button class="btn" onclick="togglePayForm()">＋ 新增收款</button></div>
     <div id="payForm" class="formbox hide"><h3>新增收款</h3>
@@ -556,7 +570,14 @@ async function renderPayments(){
       </div>
       <div style="margin-top:12px"><button class="btn" onclick="submitPay()">建立收款</button><button class="btn ghost" onclick="togglePayForm()">取消</button></div>
     </div>
-    <div class="card"><table>
+    <div class="card"><h3>訂單收款彙總</h3>
+      <div class="muted" style="margin-bottom:8px">一張單一列;訂金、尾款分開列示,未收金額醒目標示。點訂單編號可看明細。</div>
+      <table>
+      <tr><th>訂單</th><th>客戶</th><th>團號</th><th>成交總額</th><th>已收訂金</th><th>已收尾款</th><th>已收合計</th><th>未收</th><th>狀態</th></tr>
+      ${summary || '<tr><td colspan=9 class="muted">尚無訂單</td></tr>'}
+    </table></div>
+    <div class="card" style="margin-top:16px"><h3>收款流水(逐筆)</h3>
+      <table>
       <tr><th>收款時間</th><th>訂單</th><th>客戶</th><th>類型</th><th>方式</th><th>金額</th><th>備註</th></tr>
       ${pays.map(p=>`<tr><td>${(p.paid_at||'').replace('T',' ')}</td><td>${esc(p.order_no)}</td><td>${esc(p.customer_name)}</td>
         <td>${esc(p.payment_type)}</td><td>${esc(p.method)}</td><td>${money(p.amount)}</td><td>${p.note?'後5碼 '+esc(p.note):''}</td></tr>`).join('')
