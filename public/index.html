@@ -115,7 +115,10 @@ const isActiveOrder = s => s==='待付訂金'||s==='已確認'||s==='已完成';
 const signBadge = s => `<span class="badge ${s==='已簽'?'b-green':'b-orange'}">${esc(s||'未簽')}</span>`;
 const payBadge = (paid,total) => paid<=0?'<span class="badge b-gray">未收</span>':(paid<total?'<span class="badge b-orange">部分收款</span>':'<span class="badge b-green">已付清</span>');
 
-let META = { passenger_types:[], resource_types:[], contract_templates:[] };
+let META = { passenger_types:[], resource_types:[], contract_templates:[], price_tiers:[] };
+// 通路來源 → 預設價別:同業走同業價,其餘(官網/櫃台/業務)走預設(直客價)。業務後台仍可手動改。
+const defaultTierId = () => { const d=(META.price_tiers||[]).find(t=>t.is_default); return d?d.price_tier_id:(META.price_tiers[0]&&META.price_tiers[0].price_tier_id); };
+const tierForChannel = ch => { if(ch==='同業'){ const t=(META.price_tiers||[]).find(t=>/同業/.test(t.name)); if(t) return t.price_tier_id; } return defaultTierId(); };
 const state = { page:'tours', curTour:null, curOrder:null, signupTour:null };
 const TITLES = { tours:'團期列表', products:'商品管理', signup:'客戶報名', orders:'訂單管理',
   customers:'客戶管理', contracts:'契約管理', payments:'收款管理', settings:'設定',
@@ -152,7 +155,10 @@ window.toggleTourForm = async () => {
   if(!box.classList.contains('hide')){ box.classList.add('hide'); return; }
   const products = await api('/api/products');
   const inv = META.resource_types.map(r=>`<div class="fld"><label>${esc(r.name)} 總數</label><input type="number" min="0" value="0" data-res="${r.resource_type_id}"></div>`).join('');
-  const prc = META.passenger_types.map(p=>`<div class="fld"><label>${esc(p.name)} 售價</label><input type="number" min="0" value="0" data-pt="${p.passenger_type_id}"></div>`).join('');
+  const prc = (META.price_tiers||[]).map(tier=>
+    `<div class="fld" style="grid-column:1/-1;margin-top:4px"><strong>${esc(tier.name)}</strong></div>` +
+    META.passenger_types.map(p=>`<div class="fld"><label>${esc(p.name)} 售價</label><input type="number" min="0" value="0" data-pt="${p.passenger_type_id}" data-tier="${tier.price_tier_id}"></div>`).join('')
+  ).join('');
   box.innerHTML = `<h3>開團(設定庫存與售價)</h3>
     <div class="form">
       <div class="fld"><label>商品 *</label><select id="t-product">${products.map(p=>`<option value="${p.product_id}">${esc(p.name)}</option>`).join('')}</select></div>
@@ -174,7 +180,7 @@ window.submitTour = async () => {
   if(!code) return toast('請填寫團號', true);
   if(!start) return toast('請選擇出發日期', true);
   const inventory=[...document.querySelectorAll('[data-res]')].map(i=>({resource_type_id:+i.dataset.res,total_qty:+i.value||0}));
-  const prices=[...document.querySelectorAll('#tourForm [data-pt]')].map(i=>({passenger_type_id:+i.dataset.pt,price:+i.value||0,deposit_ratio:0.3}));
+  const prices=[...document.querySelectorAll('#tourForm [data-pt]')].map(i=>({passenger_type_id:+i.dataset.pt,price_tier_id:+i.dataset.tier,price:+i.value||0,deposit_ratio:0.3}));
   try{ await api('/api/tours','POST',{product_id:+$('#t-product').value,tour_code:code,start_date:start,end_date:$('#t-end').value||start,min_pax:+$('#t-min').value||0,max_pax:+$('#t-max').value||0,signup_deadline:$('#t-deadline').value||start,inventory,prices});
     toast('團期已建立'); renderTours();
   }catch(e){ toast(e.message,true); }
@@ -279,7 +285,9 @@ async function renderSignup(){
           <div class="fld"><label>客戶姓名 *</label><input id="s-name" placeholder="王小明"></div>
           <div class="fld"><label>聯絡電話</label><input id="s-phone" placeholder="0912345678"></div>
           <div class="fld"><label>Email</label><input id="s-email"></div>
-          <div class="fld"><label>通路來源</label><select id="s-channel"><option>櫃台</option><option>官網</option><option>業務</option><option>同業</option></select></div>
+          <div class="fld"><label>通路來源</label><select id="s-channel" onchange="onChannelChange()"><option>櫃台</option><option>官網</option><option>業務</option><option>同業</option></select></div>
+          <div class="fld"><label>價別</label><select id="s-tier" onchange="loadSignupPrices()">
+            ${(META.price_tiers||[]).map(t=>`<option value="${t.price_tier_id}">${esc(t.name)}</option>`).join('')}</select></div>
         </div>
       </div>
       <div class="card"><h3>選擇團期</h3>
@@ -296,13 +304,18 @@ async function renderSignup(){
         <button class="btn" style="margin-top:10px" onclick="submitSignup()">送出報名並建立訂單</button>
       </div>
     </div>`;
+  if($('#s-tier')) $('#s-tier').value = tierForChannel($('#s-channel').value);
   loadSignupPrices();
 }
+// 通路來源改變 → 依規則帶預設價別(業務仍可再手動改),再重抓價格
+window.onChannelChange = () => { if($('#s-tier')) $('#s-tier').value = tierForChannel($('#s-channel').value); loadSignupPrices(); };
 window.loadSignupPrices = async () => {
   const id = +$('#s-tour').value;
+  const tier = +($('#s-tier') && $('#s-tier').value) || defaultTierId();
   const d = await api('/api/tours/'+id);
+  const rows = d.prices.filter(p=>p.price_tier_id===tier);
   $('#s-price').innerHTML = `<tr><th>旅客類型</th><th>人數</th><th>成交單價</th><th>成交小計</th></tr>` +
-    d.prices.map(p=>`<tr><td>${esc(p.name)}</td>
+    (rows.length?rows:d.prices).map(p=>`<tr><td>${esc(p.name)}</td>
       <td><input class="qty" type="number" min="0" value="0" data-pt="${p.passenger_type_id}" data-price="${p.price}" oninput="calcSignup()"></td>
       <td>${money(p.price)}</td><td class="sub" data-for="${p.passenger_type_id}">NT$ 0</td></tr>`).join('');
   calcSignup();
@@ -319,6 +332,7 @@ window.submitSignup = async () => {
   const items=[]; document.querySelectorAll('#s-price [data-pt]').forEach(i=>{const q=+i.value||0; if(q>0)items.push({passenger_type_id:+i.dataset.pt,qty:q});});
   if(!items.length) return toast('請至少選擇一位旅客', true);
   try{ const r=await api('/api/orders','POST',{tour_id:+$('#s-tour').value,channel:$('#s-channel').value,
+      price_tier_id:+($('#s-tier')&&$('#s-tier').value)||defaultTierId(),
       customer:{name,phone:$('#s-phone').value.trim(),email:$('#s-email').value.trim()},items});
     toast('報名成功:'+r.order_no); openOrder(r.order_id);
   }catch(e){ toast(e.message,true); }
@@ -363,6 +377,7 @@ window.openOrder = async (id) => {
         <div>行程/團號</div><div>${esc(o.product_name)}｜${esc(o.tour_code)}</div>
         <div>訂單類型</div><div>${esc(o.order_type)}</div>
         <div>通路</div><div>${esc(o.channel)}</div>
+        <div>價別</div><div>${esc(o.price_tier_name||'直客價')}</div>
         <div>狀態</div><div>${orderBadge(o.status)}</div>
         ${o.cancel_reason?`<div>取消原因</div><div>${esc(o.cancel_reason)}</div>`:''}
         ${o.refund_amount>0?`<div>應退款</div><div>${money(o.refund_amount)}</div>`:''}

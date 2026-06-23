@@ -51,9 +51,11 @@ async function run() {
   const car = td.inventory.find(i => i.name === '車位');
   const bed = td.inventory.find(i => i.name === '床位');
   check('步驟3 庫存 車位42、床位40', car.total_qty === 42 && bed.total_qty === 40, `車${car.total_qty} 床${bed.total_qty}`);
-  const adult = td.prices.find(p => p.name === '大人');
-  const child = td.prices.find(p => p.name === '小孩佔床');
-  check('步驟4 售價 大人30000、小孩28000', adult.price === 30000 && child.price === 28000, `大${adult.price} 小${child.price}`);
+  const adult = td.prices.find(p => p.name === '大人' && p.price_tier_name === '直客價');
+  const child = td.prices.find(p => p.name === '小孩佔床' && p.price_tier_name === '直客價');
+  check('步驟4 直客價 大人30000、小孩28000', adult.price === 30000 && child.price === 28000, `大${adult.price} 小${child.price}`);
+  const adultAgent = td.prices.find(p => p.name === '大人' && p.price_tier_name === '同業價');
+  check('步驟4b 同業價 大人28000(低於直客價)', adultAgent && adultAgent.price === 28000 && adultAgent.price < adult.price, adultAgent && `同業${adultAgent.price}`);
 
   const o = await req('GET', '/api/orders/1');
   check('步驟5 訂單 HUA3D260701A、客戶 王小明', o.order_no === 'HUA3D260701A' && o.customer_name === '王小明', `${o.order_no}/${o.customer_name}`);

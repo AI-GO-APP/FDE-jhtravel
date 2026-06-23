@@ -120,13 +120,23 @@ function createSchema(db) {
     PRIMARY KEY (tour_id, resource_type_id)
   );
 
+  -- 價別主檔(直客價 / 同業價 …,可自由增減)。is_default=1 為來源未指定時的預設價別。
+  CREATE TABLE price_tier (
+    price_tier_id  INTEGER PRIMARY KEY,
+    name           TEXT,
+    is_default     INTEGER,   -- 1=預設(官網/櫃台/業務未指定時套此)
+    sort_order     INTEGER,
+    status         TEXT       -- 啟用 / 停用
+  );
+
   CREATE TABLE tour_price (
     tour_id            INTEGER,
     passenger_type_id  INTEGER,
+    price_tier_id      INTEGER, -- 對應 price_tier(直客/同業…)
     price              INTEGER,
     deposit_ratio      REAL,    -- 訂金比例 0~1
     created_at         TEXT,
-    PRIMARY KEY (tour_id, passenger_type_id)
+    PRIMARY KEY (tour_id, passenger_type_id, price_tier_id)
   );
 
   CREATE TABLE "order" (
@@ -136,6 +146,7 @@ function createSchema(db) {
     tour_id         INTEGER,
     customer_id     INTEGER,
     channel         TEXT,       -- 官網 / 同業 / 電話
+    price_tier_id   INTEGER,    -- 此單套用的價別(直客/同業…)
     status          TEXT,       -- 待付訂金 / 已確認 / 逾期取消 / 取消(V1.1)
     hold_expire_at  TEXT,       -- V1.1 新增:佔位到期時間
     cancel_reason   TEXT,       -- V1.1 新增:客取消 / 逾期 / 不成團
@@ -210,6 +221,13 @@ function seed(db) {
   pt.run(3, '小孩不佔床', 1, '啟用');
   pt.run(4, '嬰兒', 0, '啟用'); // 不計入成團人數
 
+  // --- 價別(直客價 / 同業價;直客價為預設)---
+  const ptier = db.prepare(
+    'INSERT INTO price_tier (price_tier_id,name,is_default,sort_order,status) VALUES (?,?,?,?,?)'
+  );
+  ptier.run(1, '直客價', 1, 1, '啟用'); // 預設:官網/櫃台/業務未指定時套此
+  ptier.run(2, '同業價', 0, 2, '啟用');
+
   // --- 資源類型 ---
   const rt = db.prepare(
     'INSERT INTO resource_type (resource_type_id,name,status) VALUES (?,?,?)'
@@ -281,12 +299,18 @@ function seed(db) {
   // 北海道:車位30、床位30、機位30;used 對應(永盛8+黃2+吳2+王小明2 = 車14床14機14)
   iv.run(2, 1, 30, 14); iv.run(2, 2, 30, 14); iv.run(2, 3, 30, 14);
 
-  // 步驟4. 售價(tour_price)— 大人30,000、小孩28,000
+  // 步驟4. 售價(tour_price)— 每團 × 每旅客類型 × 每價別。直客價較高、同業價較低。
   const tp = db.prepare(
-    'INSERT INTO tour_price (tour_id,passenger_type_id,price,deposit_ratio,created_at) VALUES (?,?,?,?,?)'
+    'INSERT INTO tour_price (tour_id,passenger_type_id,price_tier_id,price,deposit_ratio,created_at) VALUES (?,?,?,?,?,?)'
   );
-  tp.run(1, 1, 30000, 0.3, now); tp.run(1, 2, 28000, 0.3, now); tp.run(1, 3, 26000, 0.3, now); tp.run(1, 4, 5000, 0.3, now);
-  tp.run(2, 1, 42000, 0.3, now); tp.run(2, 2, 39000, 0.3, now); tp.run(2, 3, 36000, 0.3, now); tp.run(2, 4, 8000, 0.3, now);
+  // 花蓮三日 — 直客價:大人30000/小孩佔床28000/不佔床26000/嬰兒5000
+  tp.run(1, 1, 1, 30000, 0.3, now); tp.run(1, 2, 1, 28000, 0.3, now); tp.run(1, 3, 1, 26000, 0.3, now); tp.run(1, 4, 1, 5000, 0.3, now);
+  // 花蓮三日 — 同業價(各低 2000)
+  tp.run(1, 1, 2, 28000, 0.3, now); tp.run(1, 2, 2, 26000, 0.3, now); tp.run(1, 3, 2, 24000, 0.3, now); tp.run(1, 4, 2, 5000, 0.3, now);
+  // 北海道五日 — 直客價:大人42000/小孩佔床39000/不佔床36000/嬰兒8000
+  tp.run(2, 1, 1, 42000, 0.3, now); tp.run(2, 2, 1, 39000, 0.3, now); tp.run(2, 3, 1, 36000, 0.3, now); tp.run(2, 4, 1, 8000, 0.3, now);
+  // 北海道五日 — 同業價(各低 3000)
+  tp.run(2, 1, 2, 39000, 0.3, now); tp.run(2, 2, 2, 36000, 0.3, now); tp.run(2, 3, 2, 33000, 0.3, now); tp.run(2, 4, 2, 8000, 0.3, now);
 
   // 步驟5. 客戶(customer)+ 訂單(order)— 王小明報名 HUA3D260701A
   db.prepare(
@@ -294,8 +318,8 @@ function seed(db) {
   ).run(1, '王小明', '0912345678', 'ming@example.com', 'mingwang', '', now);
 
   db.prepare(
-    'INSERT INTO "order" (order_id,order_no,order_type,tour_id,customer_id,channel,status,hold_expire_at,cancel_reason,refund_amount,created_at,cancelled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
-  ).run(1, 'HUA3D260701A', '一般', 1, 1, '櫃台', '已完成', null, null, 0, '2026-06-05T10:00:00', null);
+    'INSERT INTO "order" (order_id,order_no,order_type,tour_id,customer_id,channel,price_tier_id,status,hold_expire_at,cancel_reason,refund_amount,created_at,cancelled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)'
+  ).run(1, 'HUA3D260701A', '一般', 1, 1, '櫃台', 1, '已完成', null, null, 0, '2026-06-05T10:00:00', null);
 
   // 步驟6. 訂單明細(order_item)— 大人2、小孩1。2×30000 + 1×28000 = 88,000
   const item = db.prepare(
@@ -335,26 +359,26 @@ function seed(db) {
   cust.run(3, '陳先生', '0933222333', 'chen@example.com', '', '', now);
   cust.run(4, '永盛旅行社', '02-27001234', 'sales@yongsheng.com', 'yongsheng', '同業合作', now);
 
-  const ord = db.prepare('INSERT INTO "order" (order_id,order_no,order_type,tour_id,customer_id,channel,status,hold_expire_at,cancel_reason,refund_amount,created_at,cancelled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
+  const ord = db.prepare('INSERT INTO "order" (order_id,order_no,order_type,tour_id,customer_id,channel,price_tier_id,status,hold_expire_at,cancel_reason,refund_amount,created_at,cancelled_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)');
   const oi = db.prepare('INSERT INTO order_item (order_id,passenger_type_id,qty,agreed_unit_price,agreed_subtotal,discount_amount,final_amount) VALUES (?,?,?,?,?,?,?)');
   const py = db.prepare('INSERT INTO payment (order_id,payment_type,amount,method,paid_at,note,created_at) VALUES (?,?,?,?,?,?,?)');
 
-  // 林小姐:剛報名、待付訂金(花蓮三日,2 大人,尚未付款)
-  ord.run(2, 'O20260607002', '一般', 1, 2, '官網', '待付訂金', holdFuture, null, 0, '2026-06-07T09:30:00', null);
+  // 林小姐:剛報名、待付訂金(花蓮三日,2 大人,尚未付款)— 官網=直客價
+  ord.run(2, 'O20260607002', '一般', 1, 2, '官網', 1, '待付訂金', holdFuture, null, 0, '2026-06-07T09:30:00', null);
   oi.run(2, 1, 2, 30000, 60000, 0, 60000);
 
-  // 陳先生:已付訂金、已確認(花蓮三日,2 大 1 小;訂金 26,400;契約已產生但未簽)
-  ord.run(3, 'O20260606003', '一般', 1, 3, '櫃台', '已確認', null, null, 0, '2026-06-06T15:00:00', null);
+  // 陳先生:已付訂金、已確認(花蓮三日,2 大 1 小;訂金 26,400;契約已產生但未簽)— 櫃台=直客價
+  ord.run(3, 'O20260606003', '一般', 1, 3, '櫃台', 1, '已確認', null, null, 0, '2026-06-06T15:00:00', null);
   oi.run(3, 1, 2, 30000, 60000, 0, 60000);
   oi.run(3, 2, 1, 28000, 28000, 0, 28000);
   py.run(3, '訂金', 26400, '信用卡', '2026-06-06T15:10:00', '', '2026-06-06T15:10:00');
   db.prepare('INSERT INTO member_contract (member_contract_id,order_id,contract_template_id,contract_version,contract_no,signed_status,signed_at,signer_name,signed_pdf_url,sign_token,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
     .run(2, 3, 1, 'V1', 'C20260606003', '未簽', null, '', '/contracts/domestic-v1.pdf', 'seedchen0002', now);
 
-  // 永盛旅行社:已付訂金、已確認(北海道,8 大人,同業團;訂金 100,800)
-  ord.run(4, 'O20260605004', '同業', 2, 4, '同業', '已確認', null, null, 0, '2026-06-05T11:00:00', null);
-  oi.run(4, 1, 8, 42000, 336000, 0, 336000);
-  py.run(4, '訂金', 100800, '轉帳', '2026-06-05T11:20:00', '', '2026-06-05T11:20:00');
+  // 永盛旅行社:已付訂金、已確認(北海道,8 大人,同業團 → 套同業價 39000;8×39000=312000,訂金 93,600)
+  ord.run(4, 'O20260605004', '同業', 2, 4, '同業', 2, '已確認', null, null, 0, '2026-06-05T11:00:00', null);
+  oi.run(4, 1, 8, 39000, 312000, 0, 312000);
+  py.run(4, '訂金', 93600, '轉帳', '2026-06-05T11:20:00', '', '2026-06-05T11:20:00');
 
   // ── 幾筆「剛報名(待付訂金)」範例 ──
   cust.run(5, '張先生', '0955333444', '', '', '', now);
@@ -362,23 +386,23 @@ function seed(db) {
   cust.run(7, '黃先生', '0977555666', '', '', '', now);
   cust.run(8, '吳小姐', '0988666777', 'wu2@example.com', '', '', now);
 
-  // 張先生:剛報名(花蓮三日,2 大人)
-  ord.run(5, 'O20260608005', '一般', 1, 5, '官網', '待付訂金', holdFuture, null, 0, '2026-06-08T10:00:00', null);
+  // 張先生:剛報名(花蓮三日,2 大人)— 官網=直客價
+  ord.run(5, 'O20260608005', '一般', 1, 5, '官網', 1, '待付訂金', holdFuture, null, 0, '2026-06-08T10:00:00', null);
   oi.run(5, 1, 2, 30000, 60000, 0, 60000);
-  // 李小姐:剛報名(花蓮三日,1 大 1 小)
-  ord.run(6, 'O20260608006', '一般', 1, 6, '電話', '待付訂金', holdFuture, null, 0, '2026-06-08T14:20:00', null);
+  // 李小姐:剛報名(花蓮三日,1 大 1 小)— 電話=直客價
+  ord.run(6, 'O20260608006', '一般', 1, 6, '電話', 1, '待付訂金', holdFuture, null, 0, '2026-06-08T14:20:00', null);
   oi.run(6, 1, 1, 30000, 30000, 0, 30000);
   oi.run(6, 2, 1, 28000, 28000, 0, 28000);
-  // 黃先生:剛報名(北海道,2 大人)
-  ord.run(7, 'O20260608007', '一般', 2, 7, '官網', '待付訂金', holdFuture, null, 0, '2026-06-08T16:00:00', null);
+  // 黃先生:剛報名(北海道,2 大人)— 官網=直客價
+  ord.run(7, 'O20260608007', '一般', 2, 7, '官網', 1, '待付訂金', holdFuture, null, 0, '2026-06-08T16:00:00', null);
   oi.run(7, 1, 2, 42000, 84000, 0, 84000);
-  // 吳小姐:剛報名(北海道,2 大 1 嬰)
-  ord.run(8, 'O20260609008', '一般', 2, 8, '業務', '待付訂金', holdFuture, null, 0, '2026-06-09T09:15:00', null);
+  // 吳小姐:剛報名(北海道,2 大 1 嬰)— 業務=直客價
+  ord.run(8, 'O20260609008', '一般', 2, 8, '業務', 1, '待付訂金', holdFuture, null, 0, '2026-06-09T09:15:00', null);
   oi.run(8, 1, 2, 42000, 84000, 0, 84000);
   oi.run(8, 4, 1, 8000, 8000, 0, 8000);
 
-  // 王小明回頭客:同一客戶第 2 筆訂單(北海道,2 大人,待付訂金)→ 客戶管理會顯示報名次數 2
-  ord.run(9, 'O20260609009', '一般', 2, 1, '官網', '待付訂金', holdFuture, null, 0, '2026-06-09T11:00:00', null);
+  // 王小明回頭客:同一客戶第 2 筆訂單(北海道,2 大人,待付訂金)→ 客戶管理會顯示報名次數 2 — 官網=直客價
+  ord.run(9, 'O20260609009', '一般', 2, 1, '官網', 1, '待付訂金', holdFuture, null, 0, '2026-06-09T11:00:00', null);
   oi.run(9, 1, 2, 42000, 84000, 0, 84000);
 }
 

@@ -51,15 +51,26 @@ function signedPax(db, tour_id) {
   ).get(tour_id).n;
 }
 
+// 預設價別 id(is_default=1 的啟用價別;查不到則取最小 id)。來源未指定價別時套此。
+function defaultPriceTierId(db) {
+  const row = db.prepare(
+    "SELECT price_tier_id FROM price_tier WHERE is_default=1 AND status='啟用' ORDER BY sort_order, price_tier_id LIMIT 1"
+  ).get() || db.prepare('SELECT MIN(price_tier_id) AS price_tier_id FROM price_tier').get();
+  return row ? row.price_tier_id : 1;
+}
+
 // ───────────────────────────────────────────────────────────
 // 流程 A + B:報名扣庫存(含防超賣鎖)+ 建立佔位
 // ───────────────────────────────────────────────────────────
-function createOrder(db, { tour_id, customer, channel, order_type, items }) {
+function createOrder(db, { tour_id, customer, channel, order_type, price_tier_id, items }) {
   if (!items || items.length === 0) throw new BusinessError('請至少選擇一位旅客');
 
   return tx(db, () => {
     const tour = db.prepare('SELECT * FROM tour WHERE tour_id=?').get(tour_id);
     if (!tour) throw new BusinessError('團期不存在');
+
+    // 價別:未指定(如官網前台)時套用預設價別(直客價)
+    const tier_id = price_tier_id || defaultPriceTierId(db);
     // 報名中、已成團 都可繼續報名(賣到滿為止);不成團取消/關閉/草稿 則不可
     if (tour.status !== '報名中' && tour.status !== '已成團')
       throw new BusinessError(`此團目前為「${tour.status}」,無法報名`);
@@ -120,19 +131,19 @@ function createOrder(db, { tour_id, customer, channel, order_type, items }) {
     const holdAt = addHours(NOW(), HOLD_HOURS);
     const orderNo = genOrderNo();
     const o = db.prepare(
-      `INSERT INTO "order" (order_no,order_type,tour_id,customer_id,channel,status,hold_expire_at,cancel_reason,refund_amount,created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`
-    ).run(orderNo, order_type || '一般', tour_id, customer_id, channel || '官網', '待付訂金', holdAt, null, 0, NOW());
+      `INSERT INTO "order" (order_no,order_type,tour_id,customer_id,channel,price_tier_id,status,hold_expire_at,cancel_reason,refund_amount,created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+    ).run(orderNo, order_type || '一般', tour_id, customer_id, channel || '官網', tier_id, '待付訂金', holdAt, null, 0, NOW());
     const order_id = Number(o.lastInsertRowid);
 
-    // order_item(取成交價)
-    const priceStmt = db.prepare('SELECT price FROM tour_price WHERE tour_id=? AND passenger_type_id=?');
+    // order_item(依該單價別取成交價)
+    const priceStmt = db.prepare('SELECT price FROM tour_price WHERE tour_id=? AND passenger_type_id=? AND price_tier_id=?');
     const insItem = db.prepare(
       `INSERT INTO order_item (order_id,passenger_type_id,qty,agreed_unit_price,agreed_subtotal,discount_amount,final_amount)
        VALUES (?,?,?,?,?,?,?)`
     );
     for (const it of items) {
-      const pr = priceStmt.get(tour_id, it.passenger_type_id);
+      const pr = priceStmt.get(tour_id, it.passenger_type_id, tier_id);
       const unit = pr ? pr.price : 0;
       const subtotal = unit * it.qty;
       insItem.run(order_id, it.passenger_type_id, it.qty, unit, subtotal, 0, subtotal);
@@ -453,11 +464,12 @@ function createTour(db, { product_id, tour_code, start_date, end_date, min_pax, 
     }
 
     const priceStmt = db.prepare(
-      'INSERT INTO tour_price (tour_id,passenger_type_id,price,deposit_ratio,created_at) VALUES (?,?,?,?,?)'
+      'INSERT OR REPLACE INTO tour_price (tour_id,passenger_type_id,price_tier_id,price,deposit_ratio,created_at) VALUES (?,?,?,?,?,?)'
     );
+    const fallbackTier = defaultPriceTierId(db);
     for (const p of (prices || [])) {
       if (p.price != null && Number(p.price) > 0) {
-        priceStmt.run(tour_id, p.passenger_type_id, Number(p.price), p.deposit_ratio != null ? Number(p.deposit_ratio) : 0.3, NOW());
+        priceStmt.run(tour_id, p.passenger_type_id, p.price_tier_id || fallbackTier, Number(p.price), p.deposit_ratio != null ? Number(p.deposit_ratio) : 0.3, NOW());
       }
     }
 

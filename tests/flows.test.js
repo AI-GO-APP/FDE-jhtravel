@@ -163,6 +163,32 @@ async function run() {
   const info2 = await req('GET', '/api/sign/' + token);
   check('簽署後狀態 → 已簽', info2.body.contract.signed_status === '已簽', info2.body.contract.signed_status);
 
+  // ── 價別:直客價 / 同業價,依指定套不同價;未指定套預設 ──
+  console.log('\n[價別] 直客價 / 同業價 套不同單價');
+  const meta = (await req('GET', '/api/meta')).body;
+  const directTier = meta.price_tiers.find(t => t.is_default);
+  const agentTier = meta.price_tiers.find(t => /同業/.test(t.name));
+  check('價別主檔含直客價(預設)+ 同業價', !!directTier && !!agentTier, JSON.stringify(meta.price_tiers));
+  const pT = await req('POST', '/api/products', { name: '價別測試', region_type: '國內', days: 1 });
+  const tT = await req('POST', '/api/tours', {
+    product_id: pT.body.product_id, tour_code: 'FLOW-TIER', start_date: '2026-12-01', min_pax: 1, signup_deadline: '2026-11-01',
+    inventory: [{ resource_type_id: 1, total_qty: 20 }, { resource_type_id: 2, total_qty: 20 }],
+    prices: [
+      { passenger_type_id: 1, price_tier_id: directTier.price_tier_id, price: 10000, deposit_ratio: 0.3 },
+      { passenger_type_id: 1, price_tier_id: agentTier.price_tier_id, price: 8000, deposit_ratio: 0.3 },
+    ],
+  });
+  const tierTour = tT.body.tour_id;
+  const oD = await req('POST', '/api/orders', { tour_id: tierTour, channel: '官網', price_tier_id: directTier.price_tier_id, customer: { name: '直客', phone: '09t1' }, items: [{ passenger_type_id: 1, qty: 1 }] });
+  const odD = (await req('GET', `/api/orders/${oD.body.order_id}`)).body;
+  check('指定直客價 → 單價10000、訂單顯示「直客價」', odD.items[0].agreed_unit_price === 10000 && odD.price_tier_name === '直客價', `${odD.items[0].agreed_unit_price}/${odD.price_tier_name}`);
+  const oA = await req('POST', '/api/orders', { tour_id: tierTour, channel: '同業', price_tier_id: agentTier.price_tier_id, customer: { name: '同業', phone: '09t2' }, items: [{ passenger_type_id: 1, qty: 1 }] });
+  const odA = (await req('GET', `/api/orders/${oA.body.order_id}`)).body;
+  check('指定同業價 → 單價8000(低於直客)、顯示「同業價」', odA.items[0].agreed_unit_price === 8000 && odA.price_tier_name === '同業價', `${odA.items[0].agreed_unit_price}/${odA.price_tier_name}`);
+  const oU = await req('POST', '/api/orders', { tour_id: tierTour, channel: '櫃台', customer: { name: '未指定', phone: '09t3' }, items: [{ passenger_type_id: 1, qty: 1 }] });
+  const odU = (await req('GET', `/api/orders/${oU.body.order_id}`)).body;
+  check('未指定價別 → 自動套預設(直客價10000)', odU.items[0].agreed_unit_price === 10000 && odU.price_tier_name === '直客價', `${odU.items[0].agreed_unit_price}/${odU.price_tier_name}`);
+
   // 不成團:開一個截止日已過、0 人的團 → 判定不成團取消
   const tB = await openTour({ tour_code: 'FLOW-B', min_pax: 8, deadline: '2020-01-01', total: 16 });
   await req('POST', '/api/jobs/check-deadlines', {});

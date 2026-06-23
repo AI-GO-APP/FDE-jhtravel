@@ -47,9 +47,11 @@ function tourDetail(tour_id) {
   if (!tour) return null;
   const inv = availableSeats(tour_id);
   const prices = db.prepare(
-    `SELECT tp.passenger_type_id, pt.name, tp.price, tp.deposit_ratio
-     FROM tour_price tp JOIN passenger_type pt ON pt.passenger_type_id=tp.passenger_type_id
-     WHERE tp.tour_id=? ORDER BY tp.passenger_type_id`
+    `SELECT tp.passenger_type_id, pt.name, tp.price_tier_id, ptr.name AS price_tier_name, tp.price, tp.deposit_ratio
+     FROM tour_price tp
+     JOIN passenger_type pt ON pt.passenger_type_id=tp.passenger_type_id
+     LEFT JOIN price_tier ptr ON ptr.price_tier_id=tp.price_tier_id
+     WHERE tp.tour_id=? ORDER BY tp.price_tier_id, tp.passenger_type_id`
   ).all(tour_id);
   const signed = F.signedPax(db, tour_id);
   const cap = (tour.max_pax && tour.max_pax > 0) ? Math.max(0, tour.max_pax - signed) : inv.min;
@@ -78,9 +80,10 @@ function adminTour(tour_id) {
 
 function orderDetail(order_id) {
   const order = db.prepare(
-    `SELECT o.*, c.name AS customer_name, c.phone, c.email, t.tour_code, p.name AS product_name
+    `SELECT o.*, c.name AS customer_name, c.phone, c.email, t.tour_code, p.name AS product_name, ptr.name AS price_tier_name
      FROM "order" o JOIN customer c ON c.customer_id=o.customer_id
      JOIN tour t ON t.tour_id=o.tour_id JOIN product p ON p.product_id=t.product_id
+     LEFT JOIN price_tier ptr ON ptr.price_tier_id=o.price_tier_id
      WHERE o.order_id=?`
   ).get(order_id);
   if (!order) return null;
@@ -104,6 +107,9 @@ function resourceTypes() {
 }
 function contractTemplates() {
   return db.prepare('SELECT contract_template_id, template_name, contract_version FROM contract_template WHERE is_active=1').all();
+}
+function priceTiers() {
+  return db.prepare("SELECT * FROM price_tier WHERE status='啟用' ORDER BY sort_order, price_tier_id").all();
 }
 function listProducts() {
   const rows = db.prepare('SELECT * FROM product ORDER BY product_id').all();
@@ -227,7 +233,7 @@ async function handleApi(req, res, url) {
     if (req.method === 'GET' && p === '/api/tours') return json(res, 200, listTours());
     // GET /api/meta(旅客類型、資源類型、契約範本)
     if (req.method === 'GET' && p === '/api/meta')
-      return json(res, 200, { passenger_types: passengerTypes(), resource_types: resourceTypes(), contract_templates: contractTemplates() });
+      return json(res, 200, { passenger_types: passengerTypes(), resource_types: resourceTypes(), contract_templates: contractTemplates(), price_tiers: priceTiers() });
     // GET /api/products(商品列表)
     if (req.method === 'GET' && p === '/api/products') return json(res, 200, listProducts());
     // GET /api/products/:id/tours(某商品底下的團期)
