@@ -203,7 +203,8 @@ function createSchema(db) {
     amount        INTEGER,
     method        TEXT,    -- 信用卡 / 轉帳 / 現金
     paid_at       TEXT,
-    note          TEXT,
+    note          TEXT,    -- 匯款帳號後5碼(對帳用)
+    remark        TEXT,    -- 業務自由備註
     created_at    TEXT
   );
   `);

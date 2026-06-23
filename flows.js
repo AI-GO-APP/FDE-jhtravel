@@ -156,7 +156,7 @@ function createOrder(db, { tour_id, customer, channel, order_type, price_tier_id
 // ───────────────────────────────────────────────────────────
 // 流程 B(成功路徑):付訂金 → 已確認;付尾款
 // ───────────────────────────────────────────────────────────
-function payOrder(db, { order_id, payment_type, amount, method, note }) {
+function payOrder(db, { order_id, payment_type, amount, method, note, remark }) {
   return tx(db, () => {
     const order = db.prepare('SELECT * FROM "order" WHERE order_id=?').get(order_id);
     if (!order) throw new BusinessError('訂單不存在');
@@ -164,9 +164,9 @@ function payOrder(db, { order_id, payment_type, amount, method, note }) {
       throw new BusinessError('訂單已取消,無法收款');
 
     db.prepare(
-      `INSERT INTO payment (order_id,payment_type,amount,method,paid_at,note,created_at)
-       VALUES (?,?,?,?,?,?,?)`
-    ).run(order_id, payment_type, amount, method || '信用卡', NOW(), note || '', NOW());
+      `INSERT INTO payment (order_id,payment_type,amount,method,paid_at,note,remark,created_at)
+       VALUES (?,?,?,?,?,?,?,?)`
+    ).run(order_id, payment_type, amount, method || '信用卡', NOW(), note || '', remark || '', NOW());
 
     if (payment_type === '訂金') {
       // 時限內付了訂金 → 已確認,清除 hold_expire_at,位子轉正式佔用(流程B)

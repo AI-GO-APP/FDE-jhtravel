@@ -114,6 +114,8 @@ const orderBadge = s => { const m={'待付訂金':'b-orange','已確認':'b-blue
 const isActiveOrder = s => s==='待付訂金'||s==='已確認'||s==='已完成';
 const signBadge = s => `<span class="badge ${s==='已簽'?'b-green':'b-orange'}">${esc(s||'未簽')}</span>`;
 const payBadge = (paid,total) => paid<=0?'<span class="badge b-gray">未收</span>':(paid<total?'<span class="badge b-orange">部分收款</span>':'<span class="badge b-green">已付清</span>');
+// 收款備註欄顯示:匯款末5碼(對帳用)＋業務自由備註
+const payNote = p => [p.note?'後5碼 '+esc(p.note):'', p.remark?esc(p.remark):''].filter(Boolean).join('・') || '';
 
 let META = { passenger_types:[], resource_types:[], contract_templates:[], price_tiers:[] };
 // 通路來源 → 預設價別:同業走同業價,其餘(官網/櫃台/業務)走預設(直客價)。業務後台仍可手動改。
@@ -425,7 +427,7 @@ window.openOrder = async (id) => {
     </div>
     <div class="card" style="margin-top:16px"><h3>收款紀錄</h3><table>
       <tr><th>類型</th><th>金額</th><th>方式</th><th>備註</th><th>時間</th></tr>
-      ${o.payments.map(p=>`<tr><td>${esc(p.payment_type)}</td><td>${money(p.amount)}</td><td>${esc(p.method)}</td><td>${p.note?'後5碼 '+esc(p.note):''}</td><td>${(p.paid_at||'').replace('T',' ')}</td></tr>`).join('')
+      ${o.payments.map(p=>`<tr><td>${esc(p.payment_type)}</td><td>${money(p.amount)}</td><td>${esc(p.method)}</td><td>${payNote(p)}</td><td>${(p.paid_at||'').replace('T',' ')}</td></tr>`).join('')
        || '<tr><td colspan=5 class="muted">尚無收款</td></tr>'}
     </table></div>`;
 };
@@ -567,6 +569,7 @@ async function renderPayments(){
         <div class="fld"><label>金額 *</label><input id="py-amount" type="number" min="0"></div>
         <div class="fld"><label>方式</label><select id="py-method" onchange="togglePayNote()"><option>信用卡</option><option>匯款</option><option>現金</option><option>ATM</option></select></div>
         <div class="fld" id="py-note-fld" style="display:none"><label>匯款帳號後 5 碼</label><input id="py-note" maxlength="5" placeholder="12345"></div>
+        <div class="fld"><label>備註</label><input id="py-remark" placeholder="選填,例:分期 / 代刷 / 客戶要求…"></div>
       </div>
       <div style="margin-top:12px"><button class="btn" onclick="submitPay()">建立收款</button><button class="btn ghost" onclick="togglePayForm()">取消</button></div>
     </div>
@@ -580,7 +583,7 @@ async function renderPayments(){
       <table>
       <tr><th>收款時間</th><th>訂單</th><th>客戶</th><th>類型</th><th>方式</th><th>金額</th><th>備註</th></tr>
       ${pays.map(p=>`<tr><td>${(p.paid_at||'').replace('T',' ')}</td><td>${esc(p.order_no)}</td><td>${esc(p.customer_name)}</td>
-        <td>${esc(p.payment_type)}</td><td>${esc(p.method)}</td><td>${money(p.amount)}</td><td>${p.note?'後5碼 '+esc(p.note):''}</td></tr>`).join('')
+        <td>${esc(p.payment_type)}</td><td>${esc(p.method)}</td><td>${money(p.amount)}</td><td>${payNote(p)}</td></tr>`).join('')
        || '<tr><td colspan=7 class="muted">尚無收款</td></tr>'}
     </table></div>`;
 }
@@ -591,7 +594,8 @@ window.submitPay = async () => {
   if(!oid) return toast('請選擇訂單', true);
   if(amount<=0) return toast('請填寫金額', true);
   const note = (method==='匯款') ? ($('#py-note')?.value.trim()||'') : '';
-  try{ await api(`/api/orders/${oid}/pay`,'POST',{payment_type:$('#py-type').value,amount,method,note});
+  const remark = $('#py-remark')?.value.trim()||'';
+  try{ await api(`/api/orders/${oid}/pay`,'POST',{payment_type:$('#py-type').value,amount,method,note,remark});
     toast('收款已登記'); renderPayments();
   }catch(e){ toast(e.message,true); }
 };

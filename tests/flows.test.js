@@ -92,9 +92,11 @@ async function run() {
 
   // ── 流程 B:付訂金→已確認;逾期釋放 ──
   console.log('\n[流程 B] 收款確認 / 逾期自動釋放');
-  await req('POST', `/api/orders/${orderA1}/pay`, { payment_type: '訂金', amount: 6750 });
+  await req('POST', `/api/orders/${orderA1}/pay`, { payment_type: '訂金', amount: 6750, method: '匯款', note: '54321', remark: '客戶分兩次匯' });
   const o1 = (await req('GET', `/api/orders/${orderA1}`)).body;
   check('收訂金後狀態→已確認、清除佔位', o1.status === '已確認' && !o1.hold_expire_at, o1.status);
+  const dep1 = o1.payments.find(p => p.payment_type === '訂金');
+  check('收款末5碼與業務備註分開存', dep1.note === '54321' && dep1.remark === '客戶分兩次匯', `note=${dep1.note}/remark=${dep1.remark}`);
 
   // 付清尾款 → 已完成(5大人 @4500 = 22500;訂金6750 + 尾款15750)
   await req('POST', `/api/orders/${orderA1}/pay`, { payment_type: '尾款', amount: 15750 });
