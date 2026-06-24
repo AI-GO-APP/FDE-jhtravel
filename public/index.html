@@ -83,6 +83,7 @@ textarea{min-height:80px}
       <button data-page="customers">客戶管理</button>
       <button data-page="contracts">契約管理</button>
       <button data-page="payments">收款管理</button>
+      <button data-page="resourcePrep">線控準備</button>
       <button data-page="settings">設定</button>
     </div>
   </aside>
@@ -124,9 +125,10 @@ const tierForChannel = ch => { if(ch==='同業'){ const t=(META.price_tiers||[])
 const state = { page:'tours', curTour:null, curOrder:null, signupTour:null };
 const TITLES = { tours:'團期列表', products:'商品管理', signup:'客戶報名', orders:'訂單管理',
   customers:'客戶管理', contracts:'契約管理', payments:'收款管理', settings:'設定',
-  tourControl:'單團控團', orderDetail:'訂單詳情' };
+  resourcePrep:'線控準備', tourControl:'單團控團', orderDetail:'訂單詳情' };
 const RENDER = { tours:renderTours, products:renderProducts, signup:renderSignup, orders:renderOrders,
-  customers:renderCustomers, contracts:renderContracts, payments:renderPayments, settings:renderSettings };
+  customers:renderCustomers, contracts:renderContracts, payments:renderPayments, settings:renderSettings,
+  resourcePrep:renderResourcePrep };
 
 function go(page){
   state.page = page;
@@ -136,6 +138,14 @@ function go(page){
   RENDER[page]();
 }
 function setTitle(t){ $('#pageTitle').innerText = t; document.querySelectorAll('#nav button').forEach(b=>b.classList.remove('active')); }
+
+// 線控資源準備:可互動原型,以 iframe 嵌入(獨立檔,與主系統完全隔離)
+function renderResourcePrep(){
+  C().innerHTML = `
+    <div class="section-title"><h2>線控資源準備 <span class="badge b-orange">可互動原型</span></h2></div>
+    <div class="muted" style="margin:-6px 0 12px">給客戶確認流程用的互動原型:按鈕可操作,但資料不會儲存(重整即歸零),也不接後端。</div>
+    <iframe src="resource-prep.html" style="width:100%;height:calc(100vh - 200px);min-height:640px;border:1px solid #dee2e6;border-radius:12px;background:#fff"></iframe>`;
+}
 
 // ═══════════ 團期列表(步驟2~4)═══════════
 async function renderTours(){

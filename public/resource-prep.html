@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>線控資源準備（可互動原型）</title>
+<style>
+  :root{ --green:#2f9e44; --orange:#e8590c; --blue:#1c7ed6; --gray:#adb5bd; --line:#dee2e6; --ink:#212529; --muted:#868e96; --bg:#f8f9fa; }
+  *{ box-sizing:border-box; }
+  body{ font-family:"Microsoft JhengHei","Noto Sans TC",system-ui,sans-serif; color:var(--ink); background:var(--bg); margin:0; line-height:1.6; }
+  .wrap{ max-width:980px; margin:0 auto; padding:20px 18px 80px; }
+  h1{ font-size:21px; margin:0 0 2px; }
+  .sub{ color:var(--muted); font-size:13px; margin:0 0 12px; }
+  h3{ font-size:15px; margin:18px 0 8px; }
+  .card{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin:12px 0; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+  .note-banner{ background:#fff3bf; border:1px solid #ffe066; border-radius:8px; padding:9px 13px; font-size:13px; color:#664d03; margin:10px 0; }
+  .info-banner{ background:#e7f5ff; border:1px solid #a5d8ff; border-radius:8px; padding:9px 13px; font-size:13px; color:#1864ab; margin:10px 0; }
+  .muted{ color:var(--muted); } .small{ font-size:12.5px; }
+  .badge{ display:inline-block; font-size:12px; padding:2px 9px; border-radius:999px; border:1px solid var(--line); background:#fff; }
+  .b-green{ background:#ebfbee; color:var(--green); border-color:#b2f2bb; }
+  .b-orange{ background:#fff4e6; color:var(--orange); border-color:#ffd8a8; }
+  .b-red{ background:#fff5f5; color:#e03131; border-color:#ffc9c9; }
+  .b-gray{ background:#f1f3f5; color:var(--muted); }
+  .stepper{ display:flex; align-items:flex-start; overflow-x:auto; padding:6px 0; }
+  .step{ flex:1 0 auto; min-width:96px; text-align:center; position:relative; }
+  .step .dot{ width:28px; height:28px; border-radius:50%; margin:0 auto 5px; display:flex; align-items:center; justify-content:center; font-size:14px; border:2px solid var(--gray); color:var(--gray); background:#fff; }
+  .step.done .dot{ background:var(--green); border-color:var(--green); color:#fff; }
+  .step.now .dot{ border-color:var(--orange); color:var(--orange); border-width:3px; font-weight:700; }
+  .step .lbl{ font-size:12.5px; color:var(--muted); white-space:nowrap; }
+  .step.done .lbl{ color:var(--ink); } .step.now .lbl{ color:var(--orange); font-weight:700; }
+  .step:not(:last-child)::after{ content:""; position:absolute; top:14px; left:calc(50% + 17px); right:calc(-50% + 17px); height:2px; background:var(--line); }
+  .step.done:not(:last-child)::after{ background:var(--green); }
+  table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  th,td{ border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:middle; }
+  th{ background:#f1f3f5; font-weight:600; }
+  input,select{ padding:5px 7px; border:1px solid var(--line); border-radius:7px; background:#fff; font-size:13.5px; }
+  input[type=number]{ width:70px; }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .btn{ display:inline-block; background:var(--blue); color:#fff; border:none; border-radius:8px; padding:8px 15px; font-size:13.5px; cursor:pointer; }
+  .btn:hover{ filter:brightness(.95); }
+  .btn.ghost{ background:#fff; color:var(--ink); border:1px solid var(--line); }
+  .btn.green{ background:var(--green); } .btn.sm{ padding:5px 10px; font-size:12.5px; }
+  .btn.link{ background:none; color:var(--blue); padding:0; text-decoration:underline; }
+  .right{ text-align:right; } .tot{ font-size:15px; font-weight:700; }
+  .pill{ background:#fff; border:1px solid var(--line); border-radius:8px; padding:5px 11px; font-size:13px; display:inline-block; }
+  .arrow{ color:var(--muted); font-weight:700; margin:0 4px; }
+  .del{ color:#e03131; cursor:pointer; font-weight:700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>線控資源準備 <span class="badge b-orange">可互動原型</span></h1>
+  <p class="sub">純前端示意：按鈕真的能動，但資料不會儲存（重整即歸零）。用來跟客戶確認流程與欄位。</p>
+  <div id="stepper" class="stepper"></div>
+  <div id="main"></div>
+</div>
+
+<script>
+// ───────── 假資料庫（前端記憶體，模擬「資源庫」） ─────────
+const DB = {
+  busTypes: [
+    { name:'四排 2+2 標準（42席）', seats:42, cost:18000 },
+    { name:'三排 2+1 高級（34席）', seats:34, cost:22000 },
+    { name:'12 人座小巴', seats:12, cost:9000 },
+  ],
+  restaurants: [
+    { name:'花蓮○○海鮮樓', per:10, cost:6000 },
+    { name:'台東△△風味餐廳', per:10, cost:5000 },
+  ],
+  hotels: [ { name:'○○溫泉飯店' }, { name:'□□海景酒店' } ],
+  locals: [ { name:'○○當地接待社', cost:30000 }, { name:'☆☆地接公司', cost:27000 } ],
+  leaders: [
+    { name:'王大明', busy:['2026-09-13'] },   // 9/13 已排別團 → 與 9/12-14 衝突
+    { name:'陳小華', busy:[] },
+    { name:'林志強', busy:['2026-10-01'] },
+  ],
+};
+const STAGES = ['資源預估','待簽核','已開團 / 報名中','預訂確認','完成'];
+const TOUR = { start:'2026-09-12', end:'2026-09-14', minPax:16, signed:35 };
+
+// ───────── 互動狀態 ─────────
+const state = {
+  stageIdx: 0,
+  tourType: '系列團',
+  bus:   [ { type:0, qty:1 } ],
+  meals: [ { r:0, tables:4 } ],
+  local: { v:0 },
+  rooms: { dbl:18, tri:2 },
+  flight:'國內團無機位',
+  tickets: [ { name:'○○遊樂園 全票', qty:40, cost:1000 }, { name:'台鐵對號（去程）', qty:40, cost:500 } ],
+  leaderIdx: null,
+};
+const $ = s => document.querySelector(s);
+const money = n => 'NT$ ' + (n||0).toLocaleString();
+
+function busCost(){ return state.bus.reduce((s,b)=> s + DB.busTypes[b.type].cost * b.qty, 0); }
+function mealCost(){ return state.meals.reduce((s,m)=> s + DB.restaurants[m.r].cost * m.tables, 0); }
+function localCost(){ return DB.locals[state.local.v].cost; }
+function roomCost(){ return state.rooms.dbl*3800 + state.rooms.tri*5400; }
+function ticketCost(){ return state.tourType==='客製包團' ? state.tickets.reduce((s,t)=> s + t.cost*t.qty, 0) + 12000 : 0; }
+function totalCost(){ return busCost()+mealCost()+localCost()+roomCost()+ticketCost(); }
+
+// ───────── 渲染 ─────────
+function renderStepper(){
+  $('#stepper').innerHTML = STAGES.map((s,i)=>{
+    const cls = i < state.stageIdx ? 'done' : (i === state.stageIdx ? 'now' : '');
+    const mark = i < state.stageIdx ? '✓' : (i === state.stageIdx ? '●' : '○');
+    return `<div class="step ${cls}"><div class="dot">${mark}</div><div class="lbl">${s}</div></div>`;
+  }).join('');
+}
+
+function render(){
+  renderStepper();
+  const s = state.stageIdx;
+  if (s <= 2) renderEstimate();
+  else renderConfirm();
+}
+
+// 階段 0~2：資源預估 / 待簽核 / 已開團
+function renderEstimate(){
+  const locked = state.stageIdx >= 1;       // 送簽核後鎖定
+  const dis = locked ? 'disabled' : '';
+  const custom = state.tourType === '客製包團';
+  $('#main').innerHTML = `
+    <div class="card">
+      <div class="row2">
+        <div><label class="small muted">團型</label><br>
+          <select onchange="setType(this.value)" ${dis}>
+            <option ${state.tourType==='系列團'?'selected':''}>系列團</option>
+            <option ${state.tourType==='客製包團'?'selected':''}>客製包團</option>
+          </select></div>
+        <div class="right small muted">出團 ${TOUR.start} ~ ${TOUR.end}　成團門檻 ${TOUR.minPax} 人</div>
+      </div>
+      <p class="small muted">系列團自動帶範本預設；客製包團多出 <b>門票 / 車票 / 領隊</b>。</p>
+
+      <h3>a. 遊覽車</h3>
+      <table><tr><th>車型（資源庫選）</th><th>席數</th><th>數量</th><th>小計</th><th></th></tr>
+        ${state.bus.map((b,i)=>`<tr>
+          <td><select onchange="state.bus[${i}].type=+this.value;render()" ${dis}>${DB.busTypes.map((t,j)=>`<option value="${j}" ${b.type===j?'selected':''}>${t.name}（${money(t.cost)}/台）</option>`).join('')}</select></td>
+          <td>${DB.busTypes[b.type].seats}</td>
+          <td><input type="number" min="1" value="${b.qty}" onchange="state.bus[${i}].qty=+this.value||1;render()" ${dis}> 台</td>
+          <td>${money(DB.busTypes[b.type].cost*b.qty)}</td>
+          <td>${locked?'':`<span class="del" onclick="state.bus.splice(${i},1);render()">✕</span>`}</td></tr>`).join('')}
+        ${locked?'':`<tr><td colspan="5"><button class="btn link" onclick="state.bus.push({type:0,qty:1});render()">＋ 新增車輛</button></td></tr>`}
+      </table>
+
+      <h3>b. 餐廳</h3>
+      <table><tr><th>餐廳（資源庫選）</th><th>每桌</th><th>桌數</th><th>小計</th><th></th></tr>
+        ${state.meals.map((m,i)=>`<tr>
+          <td><select onchange="state.meals[${i}].r=+this.value;render()" ${dis}>${DB.restaurants.map((r,j)=>`<option value="${j}" ${m.r===j?'selected':''}>${r.name}（${money(r.cost)}/桌）</option>`).join('')}</select></td>
+          <td>${DB.restaurants[m.r].per} 人</td>
+          <td><input type="number" min="1" value="${m.tables}" onchange="state.meals[${i}].tables=+this.value||1;render()" ${dis}> 桌</td>
+          <td>${money(DB.restaurants[m.r].cost*m.tables)}</td>
+          <td>${locked?'':`<span class="del" onclick="state.meals.splice(${i},1);render()">✕</span>`}</td></tr>`).join('')}
+        ${locked?'':`<tr><td colspan="5"><button class="btn link" onclick="state.meals.push({r:0,tables:1});render()">＋ 新增餐廳</button></td></tr>`}
+      </table>
+
+      <h3>c. 地接 ｜ d. 飯店房間 ｜ e. 機位</h3>
+      <table>
+        <tr><th>項目</th><th>內容</th><th>數量 / 規格</th><th>小計</th></tr>
+        <tr><td>地接</td>
+          <td><select onchange="state.local.v=+this.value;render()" ${dis}>${DB.locals.map((l,j)=>`<option value="${j}" ${state.local.v===j?'selected':''}>${l.name}</option>`).join('')}</select></td>
+          <td>1 式</td><td>${money(localCost())}</td></tr>
+        <tr><td>飯店</td><td>○○溫泉飯店</td>
+          <td>雙人 <input type="number" min="0" value="${state.rooms.dbl}" onchange="state.rooms.dbl=+this.value||0;render()" ${dis}> 間　三人 <input type="number" min="0" value="${state.rooms.tri}" onchange="state.rooms.tri=+this.value||0;render()" ${dis}> 間</td>
+          <td>${money(roomCost())}</td></tr>
+        <tr><td>機位</td><td>${state.flight}</td><td>—</td><td>—</td></tr>
+      </table>
+      <div class="info-banner">🔗 飯店 ${state.rooms.dbl+state.rooms.tri} 間、遊覽車 ${state.bus.reduce((s,b)=>s+DB.busTypes[b.type].seats*b.qty,0)} 席 → 自動成為這團「可售庫存上限」。</div>
+
+      ${custom?`<h3>客製包團才有：f. 門票 ｜ g. 車票 ｜ h. 領隊</h3>
+      <table><tr><th>項目</th><th>數量</th><th>小計</th></tr>
+        ${state.tickets.map((t,i)=>`<tr><td>${t.name}</td>
+          <td><input type="number" min="0" value="${t.qty}" onchange="state.tickets[${i}].qty=+this.value||0;render()" ${dis}> 張</td>
+          <td>${money(t.cost*t.qty)}</td></tr>`).join('')}
+        <tr><td>領隊（預估階段先預留 1 名，不指定人）</td><td>1 名</td><td>${money(12000)}</td></tr>
+      </table>`:''}
+
+      <div class="right" style="margin-top:14px"><span class="tot">預估總成本：${money(totalCost())}</span></div>
+    </div>
+
+    ${renderSignBox(locked)}
+  `;
+}
+
+function renderSignBox(locked){
+  if (state.stageIdx === 0){
+    return `<div class="card right"><button class="btn" onclick="next()">送出給線控主管簽核 →</button></div>`;
+  }
+  if (state.stageIdx === 1){
+    return `<div class="card">
+      <h3>簽核鏈（關卡可調）</h3>
+      <div><span class="pill" style="border-color:#b2f2bb;background:#ebfbee">線控助理 送出 ✓</span>
+        <span class="arrow">→</span>
+        <span class="pill" style="border-color:#ffd8a8;background:#fff4e6">線控主管 <span class="badge b-orange">待簽核</span></span>
+        <span class="arrow">→</span>
+        <span class="pill" style="opacity:.5">（未來可加）財務 <span class="badge b-gray">未啟用</span></span></div>
+      <div style="margin-top:12px"><button class="btn green" onclick="next()">主管：簽核通過 → 開團</button>
+        <button class="btn ghost" onclick="prev()">退回修改</button></div>
+    </div>`;
+  }
+  // 已開團 / 報名中
+  return `<div class="card">
+    <div class="info-banner">✅ 已簽核開團，目前報名中（已報名 ${TOUR.signed} 人 / 門檻 ${TOUR.minPax} 人）。</div>
+    <button class="btn" onclick="next()">⏰ 模擬「達成團人數」→ 進入預訂確認</button>
+  </div>`;
+}
+
+// 階段 3~4：預訂確認 / 完成
+function renderConfirm(){
+  const done = state.stageIdx === 4;
+  const leader = state.leaderIdx!=null ? DB.leaders[state.leaderIdx] : null;
+  const conflict = leader ? leader.busy.some(d => d >= TOUR.start && d <= TOUR.end) : false;
+  $('#main').innerHTML = `
+    <div class="card">
+      ${done?'<div class="info-banner">🎉 預訂確認完成，本團資源已全部確認。</div>'
+            :`<div class="note-banner">⏰ 已達成團人數（${TOUR.minPax} 人），請於 9/2 cut-off 前完成各項「實際預訂」並指定實體。</div>`}
+
+      <h3>對量檢驗（預估 vs 實際報名 ${TOUR.signed} 人）</h3>
+      <table><tr><th>項目</th><th>當初預估</th><th>實際需求</th><th>狀態</th></tr>
+        <tr><td>遊覽車</td><td>${state.bus.reduce((s,b)=>s+b.qty,0)} 台 / ${state.bus.reduce((s,b)=>s+DB.busTypes[b.type].seats*b.qty,0)} 席</td><td>${TOUR.signed} 人（足夠）</td><td><span class="badge b-green">相符</span></td></tr>
+        <tr><td>餐廳桌數</td><td>${state.meals.reduce((s,m)=>s+m.tables,0)} 桌</td><td>${Math.ceil(TOUR.signed/10)} 桌（${TOUR.signed} 人）</td><td><span class="badge b-orange">建議確認桌數</span></td></tr>
+        <tr><td>飯店房間</td><td>雙人${state.rooms.dbl}+三人${state.rooms.tri}</td><td>依實際配房</td><td><span class="badge b-orange">需重配房</span></td></tr>
+      </table>
+
+      <h3>綁定實體 ＋ 衝突檢查（此階段才做）</h3>
+      <table><tr><th>項目</th><th>指定實體</th><th>日期</th><th>衝突檢查</th></tr>
+        <tr><td>遊覽車</td><td>大發遊覽車 ABC-123</td><td>${TOUR.start}–${TOUR.end}</td><td><span class="badge b-green">無衝突</span></td></tr>
+        <tr><td>領隊</td>
+          <td><select onchange="state.leaderIdx=this.value===''?null:+this.value;render()">
+            <option value="">— 請指派 —</option>
+            ${DB.leaders.map((l,j)=>`<option value="${j}" ${state.leaderIdx===j?'selected':''}>${l.name}</option>`).join('')}
+          </select></td>
+          <td>${TOUR.start}–${TOUR.end}</td>
+          <td>${leader ? (conflict
+              ? `<span class="badge b-red">衝突：${leader.busy.join('、')} 已排別團</span>`
+              : '<span class="badge b-green">無衝突</span>') : '<span class="badge b-gray">未指派</span>'}</td></tr>
+      </table>
+      <p class="small muted">試試把領隊指派成「王大明」會跳衝突（他 9/13 已排別團）；換成「陳小華」就無衝突。</p>
+
+      <div style="margin-top:14px">
+        ${done?`<button class="btn ghost" onclick="reset()">重新開始原型</button>`
+              :`<button class="btn green" onclick="finishConfirm()">全部確認預訂完成</button>
+                <button class="btn ghost" onclick="prev()">← 返回</button>`}
+      </div>
+    </div>`;
+}
+
+// ───────── 動作 ─────────
+function setType(v){ state.tourType=v; render(); }
+function next(){ if(state.stageIdx < STAGES.length-1){ state.stageIdx++; render(); } }
+function prev(){ if(state.stageIdx > 0){ state.stageIdx--; render(); } }
+function finishConfirm(){
+  const leader = state.leaderIdx!=null ? DB.leaders[state.leaderIdx] : null;
+  const conflict = leader && leader.busy.some(d => d >= TOUR.start && d <= TOUR.end);
+  if(!leader){ alert('請先指派領隊'); return; }
+  if(conflict){ alert('領隊有排班衝突，請改派其他領隊'); return; }
+  state.stageIdx = 4; render();
+}
+function reset(){ location.reload(); }
+window.setType=setType; window.next=next; window.prev=prev; window.finishConfirm=finishConfirm; window.reset=reset;
+
+render();
+</script>
+</body>
+</html>
